@@ -288,9 +288,20 @@ jobs:
           # Check model command
           node ../dist/index.js model
           node ../dist/index.js model list
-          # Check search status (semantic disabled by default)
+          # Download smallest model (~45MB)
+          echo "Downloading model..."
+          node ../dist/index.js model download all-MiniLM-L6-v2
+          # Set model for project
+          node ../dist/index.js model set all-MiniLM-L6-v2
+          # Enable semantic search
+          node ../dist/index.js config set semanticSearch.enabled true
+          # Check status
           node ../dist/index.js search --status-check
-          # Test keyword search (always works)
+          # Build index
+          node ../dist/index.js search --reindex
+          # Test semantic search
+          node ../dist/index.js search "test task" --plain
+          # Test keyword search fallback
           node ../dist/index.js search "test" --keyword --plain
           echo "✅ Semantic search passed"
 
@@ -305,7 +316,7 @@ jobs:
           echo "--- Docs ---"
           node ../dist/index.js doc list --plain
           echo ""
-          echo "--- Search all ---"
-          node ../dist/index.js search "test" --keyword --plain
+          echo "--- Search (semantic) ---"
+          node ../dist/index.js search "architecture" --plain
           echo ""
           echo "✅✅✅ All E2E tests passed on ${{ matrix.os }}! ✅✅✅"
