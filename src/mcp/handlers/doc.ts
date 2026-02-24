@@ -77,11 +77,6 @@ export const updateDocSchema = z.object({
 	section: z.string().optional(), // Target section to replace (use with content)
 });
 
-export const searchDocsSchema = z.object({
-	query: z.string(),
-	tag: z.string().optional(),
-});
-
 // Tool definitions
 export const docTools = [
 	{
@@ -182,18 +177,6 @@ export const docTools = [
 				},
 			},
 			required: ["path"],
-		},
-	},
-	{
-		name: "search_docs",
-		description: "Search documentation by query string",
-		inputSchema: {
-			type: "object",
-			properties: {
-				query: { type: "string", description: "Search query" },
-				tag: { type: "string", description: "Filter by tag" },
-			},
-			required: ["query"],
 		},
 	},
 ];
@@ -531,18 +514,14 @@ export async function handleCreateDoc(args: unknown) {
 	// Notify web server for real-time updates
 	await notifyDocUpdate(relativePath);
 
-	// Index doc for semantic search (fire and forget)
+	// Index doc for semantic search
 	const docPath = relativePath.replace(/\.md$/, "");
-	getIndexService(getProjectRoot())
-		.indexDoc(docPath, initialContent, {
-			path: docPath,
-			title: metadata.title,
-			description: metadata.description,
-			tags: metadata.tags,
-		})
-		.catch(() => {
-			// Silently ignore indexing errors
-		});
+	await getIndexService(getProjectRoot()).indexDoc(docPath, initialContent, {
+		path: docPath,
+		title: metadata.title,
+		description: metadata.description,
+		tags: metadata.tags,
+	});
 
 	return successResponse({
 		message: `Created documentation: ${relativePath}`,
@@ -609,18 +588,14 @@ export async function handleUpdateDoc(args: unknown) {
 	// Notify web server for real-time updates
 	await notifyDocUpdate(resolved.filename);
 
-	// Index doc for semantic search (fire and forget)
+	// Index doc for semantic search
 	const docPath = resolved.filename.replace(/\.md$/, "");
-	getIndexService(getProjectRoot())
-		.indexDoc(docPath, updatedContent, {
-			path: docPath,
-			title: metadata.title,
-			description: metadata.description,
-			tags: metadata.tags,
-		})
-		.catch(() => {
-			// Silently ignore indexing errors
-		});
+	await getIndexService(getProjectRoot()).indexDoc(docPath, updatedContent, {
+		path: docPath,
+		title: metadata.title,
+		description: metadata.description,
+		tags: metadata.tags,
+	});
 
 	return successResponse({
 		message: sectionUpdated
@@ -634,65 +609,5 @@ export async function handleUpdateDoc(args: unknown) {
 			updatedAt: metadata.updatedAt,
 			...(sectionUpdated && { section: sectionUpdated }),
 		},
-	});
-}
-
-export async function handleSearchDocs(args: unknown) {
-	const input = searchDocsSchema.parse(args);
-	await ensureDocsDir();
-
-	const mdFiles = await getAllMdFiles(getDocsDir());
-	const query = input.query.toLowerCase();
-
-	const results: Array<{
-		path: string;
-		title: string;
-		description?: string;
-		tags?: string[];
-		matchContext?: string;
-	}> = [];
-
-	for (const file of mdFiles) {
-		const fileContent = await readFile(join(getDocsDir(), file), "utf-8");
-		const { data, content } = matter(fileContent);
-		const metadata = data as DocMetadata;
-
-		// Filter by tag if specified
-		if (input.tag && !metadata.tags?.includes(input.tag)) {
-			continue;
-		}
-
-		// Search in title, description, tags, and content
-		const titleMatch = metadata.title?.toLowerCase().includes(query);
-		const descMatch = metadata.description?.toLowerCase().includes(query);
-		const tagMatch = metadata.tags?.some((t) => t.toLowerCase().includes(query));
-		const contentMatch = content.toLowerCase().includes(query);
-
-		if (titleMatch || descMatch || tagMatch || contentMatch) {
-			// Extract context around match in content
-			let matchContext: string | undefined;
-			if (contentMatch) {
-				const contentLower = content.toLowerCase();
-				const matchIndex = contentLower.indexOf(query);
-				if (matchIndex !== -1) {
-					const start = Math.max(0, matchIndex - 50);
-					const end = Math.min(content.length, matchIndex + query.length + 50);
-					matchContext = `...${content.slice(start, end).replace(/\n/g, " ")}...`;
-				}
-			}
-
-			results.push({
-				path: file.replace(/\.md$/, ""),
-				title: metadata.title || file.replace(/\.md$/, ""),
-				description: metadata.description,
-				tags: metadata.tags,
-				matchContext,
-			});
-		}
-	}
-
-	return successResponse({
-		count: results.length,
-		docs: results,
 	});
 }

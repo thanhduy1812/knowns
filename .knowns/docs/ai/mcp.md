@@ -156,7 +156,6 @@ knowns mcp setup
 | `mcp__knowns__get_task` | Get task |
 | `mcp__knowns__create_task` | Create task |
 | `mcp__knowns__update_task` | Update task (status, AC, plan, notes) |
-| `mcp__knowns__search_tasks` | Search tasks |
 
 ### Docs
 | Tool | Description |
@@ -165,7 +164,11 @@ knowns mcp setup
 | `mcp__knowns__get_doc` | Get doc (with smart mode) |
 | `mcp__knowns__create_doc` | Create doc |
 | `mcp__knowns__update_doc` | Update doc |
-| `mcp__knowns__search_docs` | Search docs |
+
+### Search
+| Tool | Description |
+|------|-------------|
+| `mcp__knowns__search` | Unified search (tasks + docs) with semantic support |
 
 ### Time
 | Tool | Description |

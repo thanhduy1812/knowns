@@ -9,7 +9,6 @@ export {
 	handleGetTask,
 	handleUpdateTask,
 	handleListTasks,
-	handleSearchTasks,
 } from "./task";
 
 // Time handlers
@@ -31,7 +30,6 @@ export {
 	handleGetDoc,
 	handleCreateDoc,
 	handleUpdateDoc,
-	handleSearchDocs,
 } from "./doc";
 
 // Template handlers

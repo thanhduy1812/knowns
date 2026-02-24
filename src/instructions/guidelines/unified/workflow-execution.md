@@ -56,7 +56,7 @@ mcp__knowns__get_doc({ "path": "xxx", "smart": true })
 mcp__knowns__get_task({ "taskId": "YY" })
 
 // Search related docs
-mcp__knowns__search_docs({ "query": "keyword" })
+mcp__knowns__search({ "query": "keyword", "type": "doc" })
 ```
 {{/if}}
 

@@ -40,7 +40,7 @@ mcp__knowns__get_doc({ "path": "doc1" })
 mcp__knowns__get_doc({ "path": "doc2" })
 
 // DO: Search first, then read only relevant docs
-mcp__knowns__search_docs({ "query": "authentication" })
+mcp__knowns__search({ "query": "authentication", "type": "doc" })
 mcp__knowns__get_doc({ "path": "security-patterns" })
 ```
 {{/if}}

@@ -9,13 +9,13 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { EmbeddingModel, SemanticSearchSettings } from "@models/project";
 import type { Task } from "@models/task";
-import { chunkDocument, chunkTask } from "@search/chunker";
 import { EmbeddingService } from "@search/embedding";
-import { HybridSearchEngine, type SearchMode, type SearchResult } from "@search/engine";
-import { SearchIndexStore } from "@search/store";
+import { SearchEngine, type SearchMode, type SearchResult } from "@search/engine";
+import { SearchStore } from "@search/store";
 import type { FileStore } from "@storage/file-store";
 import matter from "gray-matter";
 import { z } from "zod";
+import { listAllDocs } from "../../import";
 import { errorResponse, successResponse } from "../utils";
 import { getProjectRoot } from "./project";
 
@@ -265,19 +265,17 @@ async function searchTasks(
 }
 
 /**
- * Search docs
+ * Search docs (including imported docs)
  */
-async function searchDocs(docsDir: string, query: string, tagFilter?: string): Promise<DocResult[]> {
-	if (!existsSync(docsDir)) {
-		return [];
-	}
-
-	const mdFiles = await getAllMdFiles(docsDir);
+async function searchDocs(projectRoot: string, query: string, tagFilter?: string): Promise<DocResult[]> {
 	const q = query.toLowerCase();
 	const results: DocResult[] = [];
 
-	for (const file of mdFiles) {
-		const fileContent = await readFile(join(docsDir, file), "utf-8");
+	// Get all docs (local + imported)
+	const allDocs = await listAllDocs(projectRoot);
+
+	for (const doc of allDocs) {
+		const fileContent = await readFile(doc.fullPath, "utf-8");
 		const { data, content } = matter(fileContent);
 		const metadata = data as DocMetadata;
 
@@ -306,11 +304,11 @@ async function searchDocs(docsDir: string, query: string, tagFilter?: string): P
 			}
 
 			results.push({
-				path: file.replace(/\.md$/, ""),
-				title: metadata.title || file.replace(/\.md$/, ""),
+				path: doc.ref, // Use ref which includes import prefix
+				title: metadata.title || doc.name,
 				description: metadata.description,
 				tags: metadata.tags,
-				score: calculateDocScore(metadata.title, metadata.description, content, metadata.tags, query),
+				score: calculateDocScore(metadata.title || doc.name, metadata.description, content, metadata.tags, query),
 				matchContext,
 			});
 		}
@@ -338,7 +336,7 @@ async function getSemanticSearchSettings(projectRoot: string): Promise<SemanticS
 }
 
 /**
- * Perform hybrid/semantic search using HybridSearchEngine
+ * Perform hybrid/semantic search using SearchEngine
  * Auto-rebuilds index if missing (for clone/gitignore scenarios)
  */
 async function performHybridSearch(
@@ -350,58 +348,63 @@ async function performHybridSearch(
 	limit: number,
 ): Promise<{ taskResults: SearchResult[]; docResults: SearchResult[]; warning?: string }> {
 	const embeddingService = new EmbeddingService({ model });
-	const store = new SearchIndexStore(projectRoot, model);
 	let warning: string | undefined;
 
-	// Check if model is downloaded
+	// Check if model is downloaded - throw error that gets caught and falls back to keyword
 	if (!embeddingService.isModelDownloaded()) {
 		throw new Error(
-			"Embedding model not downloaded. Run 'knowns search --reindex' or 'mcp__knowns__reindex_search' to set up.",
+			"Semantic search enabled but model not downloaded. Run 'knowns model download <model>' then 'knowns search --reindex' to set up.",
 		);
 	}
 
 	// Load model
 	await embeddingService.loadModel();
 
-	// Check if index exists - auto-rebuild if missing
-	let db = await store.getDatabase();
+	// Check if index exists using SQLite store
+	let store = new SearchStore(projectRoot, model);
 
-	if (!db) {
+	if (!store.indexExists()) {
 		// Auto-rebuild the index
 		warning = "Search index was missing and has been auto-rebuilt";
+		store.close();
+
 		const { rebuildIndex } = await import("../../commands/search");
 		await rebuildIndex(projectRoot, model);
 
-		// Reload the store after rebuild
-		db = await store.getDatabase();
-		if (!db) {
+		// Reopen the store after rebuild
+		store = new SearchStore(projectRoot, model);
+		if (!store.indexExists()) {
+			store.close();
 			throw new Error("Failed to rebuild search index");
 		}
 	}
 
-	const engine = new HybridSearchEngine(embeddingService, db);
+	const engine = new SearchEngine(store, embeddingService, model);
 
 	let taskResults: SearchResult[] = [];
 	let docResults: SearchResult[] = [];
 
-	// Search based on type
+	// Search based on type - engine.search returns SearchResponse, extract .results
 	if (searchType === "all" || searchType === "task") {
-		taskResults = await engine.search(query, {
+		const response = await engine.search(query, {
 			mode: searchMode,
 			limit,
 			type: "task",
 		});
+		taskResults = response.results;
 	}
 
 	if (searchType === "all" || searchType === "doc") {
-		docResults = await engine.search(query, {
+		const response = await engine.search(query, {
 			mode: searchMode,
 			limit,
 			type: "doc",
 		});
+		docResults = response.results;
 	}
 
-	// Dispose embedding service
+	// Cleanup
+	store.close();
 	embeddingService.dispose();
 
 	return { taskResults, docResults, warning };
@@ -426,6 +429,12 @@ export async function handleSearch(args: unknown, fileStore: FileStore) {
 	let docResults: DocResult[] = [];
 
 	let searchWarning: string | undefined;
+
+	// Warn if semantic search is enabled but model not configured
+	if (settings?.enabled === true && !settings.model && searchMode !== "keyword") {
+		searchWarning =
+			"Semantic search is enabled but no model is configured. Run 'knowns model set <model>' to configure. Using keyword search.";
+	}
 
 	if (useHybrid && settings?.model) {
 		// Use hybrid/semantic search
@@ -491,7 +500,7 @@ export async function handleSearch(args: unknown, fileStore: FileStore) {
 			}
 
 			if (searchType === "all" || searchType === "doc") {
-				docResults = await searchDocs(docsDir, input.query, input.tag);
+				docResults = await searchDocs(projectRoot, input.query, input.tag);
 			}
 		}
 	} else {
@@ -506,7 +515,7 @@ export async function handleSearch(args: unknown, fileStore: FileStore) {
 		}
 
 		if (searchType === "all" || searchType === "doc") {
-			docResults = await searchDocs(docsDir, input.query, input.tag);
+			docResults = await searchDocs(projectRoot, input.query, input.tag);
 		}
 	}
 

@@ -222,7 +222,6 @@ Starting timer and beginning implementation..."
 | `get_task`     | Get task by ID          | `taskId`                                                                           |
 | `update_task`  | Update task fields      | `taskId`, `status?`, `priority?`, `assignee?`, `labels?`, `addAc?`, `checkAc?`, `uncheckAc?`, `removeAc?`, `plan?`, `notes?`, `appendNotes?` |
 | `list_tasks`   | List tasks with filters | `status?`, `priority?`, `assignee?`, `label?`                                      |
-| `search_tasks` | Search tasks by query   | `query`                                                                            |
 
 **update_task extended fields:**
 
@@ -253,7 +252,12 @@ Starting timer and beginning implementation..."
 | `get_doc`     | Get doc content | `path`, `info?`, `toc?`, `section?`                                                 |
 | `create_doc`  | Create new doc  | `title`, `description?`, `content?`, `tags?`, `folder?`                             |
 | `update_doc`  | Update doc      | `path`, `title?`, `description?`, `content?`, `appendContent?`, `tags?`, `section?` |
-| `search_docs` | Search docs     | `query`, `tag?`                                                                     |
+
+### Unified Search
+
+| Tool     | Description                     | Parameters                                           |
+| -------- | ------------------------------- | ---------------------------------------------------- |
+| `search` | Search tasks + docs (semantic)  | `query`, `type?` (all/task/doc), `mode?` (hybrid/semantic/keyword), `status?`, `priority?`, `label?`, `tag?` |
 
 **Large Document Workflow:**
 

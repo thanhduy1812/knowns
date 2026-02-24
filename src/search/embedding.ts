@@ -72,7 +72,7 @@ async function resolveModelConfig(modelId: string, providedConfig?: Partial<Mode
 }
 
 // Dynamic import for transformers.js (ESM module)
-type Pipeline = Awaited<ReturnType<typeof import("@xenova/transformers")["pipeline"]>>;
+type Pipeline = Awaited<ReturnType<typeof import("@huggingface/transformers")["pipeline"]>>;
 
 /**
  * Model status information
@@ -390,11 +390,12 @@ export class EmbeddingService {
 			this.modelPath = join(homedir(), ".knowns", "models", modelConfig.huggingFaceId);
 
 			// Dynamic import of transformers.js
-			const { pipeline, env } = await import("@xenova/transformers");
+			const { pipeline, env } = await import("@huggingface/transformers");
 
 			// Configure transformers.js to use local cache
+			// Note: cacheDir is the base directory, huggingFaceId will be appended by transformers.js
 			env.cacheDir = modelsDir;
-			env.localModelPath = this.modelPath;
+			env.localModelPath = modelsDir;
 
 			// Re-check if model exists after path resolution
 			const modelExistsNow = existsSync(this.modelPath);
@@ -405,7 +406,9 @@ export class EmbeddingService {
 			}
 
 			// Create pipeline with progress callback
+			// Use quantized model for smaller size and faster inference
 			this.pipeline = await pipeline("feature-extraction", modelConfig.huggingFaceId, {
+				quantized: true,
 				progress_callback: (data: { progress?: number }) => {
 					if (onProgress && typeof data.progress === "number") {
 						onProgress(data.progress);

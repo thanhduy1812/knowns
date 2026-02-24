@@ -19,7 +19,7 @@ mcp__knowns__list_docs({})
 mcp__knowns__get_doc({ "path": "<path>", "smart": true })
 
 // Search docs
-mcp__knowns__search_docs({ "query": "<query>" })
+mcp__knowns__search({ "query": "<query>", "type": "doc" })
 
 // Create doc (MUST include description)
 mcp__knowns__create_doc({

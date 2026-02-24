@@ -100,17 +100,15 @@ graph TD
 - `get_task` - Get task by ID
 - `update_task` - Update task fields
 - `list_tasks` - List with filters
-- `search_tasks` - Search tasks
 
 ### Doc Tools
 - `create_doc` - Create document
 - `get_doc` - Get doc (supports smart, section, toc)
 - `update_doc` - Update doc/section
 - `list_docs` - List with filters
-- `search_docs` - Search docs
 
-### Other Tools
-- `search` - Unified search (tasks + docs)
+### Search & Other Tools
+- `search` - Unified search (tasks + docs) with semantic support
 - `validate` - Check broken refs
 - `list_templates` / `run_template` - Templates
 - `start_time` / `stop_time` - Time tracking

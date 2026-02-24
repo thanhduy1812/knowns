@@ -39,6 +39,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .clinerules/
 .cursor
 .windsurfrules
+.agents
 
 # knowns (ignore all except docs)
 .knowns/*

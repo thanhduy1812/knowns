@@ -238,7 +238,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 | `get_task` | Get task by ID |
 | `update_task` | Update task |
 | `list_tasks` | List tasks |
-| `search_tasks` | Search tasks |
+| `search` | Unified search (tasks + docs) |
 | `list_docs` | List documents |
 | `get_doc` | Get document |
 | `create_doc` | Create document |

@@ -41,7 +41,7 @@ mcp__knowns__get_task({ "taskId": "<id>" })
 
 Search related:
 ```json
-mcp__knowns__search_docs({ "query": "<keywords>" })
+mcp__knowns__search({ "query": "<keywords>", "type": "doc" })
 mcp__knowns__list_templates({})
 ```
 

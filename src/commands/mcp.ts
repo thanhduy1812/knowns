@@ -189,7 +189,7 @@ function showConfigInfo() {
 	console.log(chalk.gray("  - get_task       Get task by ID"));
 	console.log(chalk.gray("  - update_task    Update task fields"));
 	console.log(chalk.gray("  - list_tasks     List tasks with filters"));
-	console.log(chalk.gray("  - search_tasks   Search tasks"));
+	console.log(chalk.gray("  - search         Unified search (tasks + docs)"));
 	console.log(chalk.gray("  - start_time     Start time tracking"));
 	console.log(chalk.gray("  - stop_time      Stop time tracking"));
 	console.log(chalk.gray("  - add_time       Add manual time entry"));

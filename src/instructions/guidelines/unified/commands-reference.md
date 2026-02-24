@@ -90,12 +90,6 @@ Returns: `{ projectRoot, isExplicitlySet, isValid, source }`
 { "status": "in-progress", "assignee": "@me" }
 ```
 
-### mcp__knowns__search_tasks
-
-```json
-{ "query": "keyword" }
-```
-
 ---
 
 ## Doc Tools
@@ -141,13 +135,7 @@ If large, returns TOC. Then read section:
 }
 ```
 
-### mcp__knowns__search_docs
-
-```json
-{ "query": "keyword", "tag": "api" }
-```
-
-### mcp__knowns__search (Unified)
+### mcp__knowns__search
 
 ```json
 {
