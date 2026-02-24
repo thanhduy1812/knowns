@@ -5,10 +5,10 @@
 # Knowns
 
 [![npm](https://img.shields.io/npm/v/knowns.svg?style=flat-square)](https://www.npmjs.com/package/knowns)
-[![GitHub stars](https://img.shields.io/github/stars/knowns-dev/knowns?style=flat-square)](#)
-[![Contributors](https://img.shields.io/github/contributors/knowns-dev/knowns?style=flat-square)](#)
-[![Last Commit](https://img.shields.io/github/last-commit/knowns-dev/knowns?style=flat-square)](#)
-[![License](https://img.shields.io/github/license/knowns-dev/knowns?style=flat-square)](#)
+[![CI](https://github.com/knowns-dev/knowns/actions/workflows/ci.yml/badge.svg)](https://github.com/knowns-dev/knowns/actions/workflows/ci.yml)
+[![Node](https://img.shields.io/node/v/knowns?style=flat-square&label=node)](https://nodejs.org/)
+[![Platform](https://img.shields.io/badge/platform-win%20%7C%20mac%20%7C%20linux-lightgrey?style=flat-square)](#installation)
+[![License](https://img.shields.io/github/license/knowns-dev/knowns?style=flat-square)](LICENSE)
 
 > Turn stateless AI into a project-aware engineering partner.
 

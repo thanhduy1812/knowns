@@ -22,9 +22,6 @@ The Knowns MCP server exposes the following capabilities:
 4. **list_tasks** - List tasks with optional filters
    - Optional: `status`, `priority`, `assignee`, `label`
 
-5. **search_tasks** - Search tasks by query
-   - Required: `query`
-
 ### Time Tracking Tools
 
 6. **start_time** - Start time tracking for a task
@@ -61,9 +58,11 @@ The Knowns MCP server exposes the following capabilities:
     - Required: `path`
     - Optional: `title`, `description`, `content`, `tags`, `appendContent`
 
-15. **search_docs** - Search documentation by query
+### Search Tool
+
+15. **search** - Unified search for tasks and docs with semantic support
     - Required: `query`
-    - Optional: `tag`
+    - Optional: `type` (all/task/doc), `mode` (hybrid/semantic/keyword), `status`, `priority`, `label`, `tag`
 
 ### Resources
 
@@ -151,13 +150,13 @@ Create a task titled "Implement dark mode" with priority high and label "ui"
 
 Claude will use the `create_task` tool to create the task in your Knowns system.
 
-### Search Tasks
+### Search
 
 ```
 Search for all tasks related to authentication
 ```
 
-Claude will use the `search_tasks` tool to find matching tasks.
+Claude will use the `search` tool with `type: "task"` to find matching tasks.
 
 ### Update a Task
 
@@ -227,7 +226,7 @@ Claude will use the `create_doc` tool to create a new documentation file.
 Search docs for "authentication"
 ```
 
-Claude will use the `search_docs` tool to find relevant documentation.
+Claude will use the `search` tool with `type: "doc"` to find relevant documentation.
 
 ## Architecture
 

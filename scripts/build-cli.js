@@ -114,10 +114,12 @@ const commonOptions = {
 	},
 	// External packages with native modules (not bundleable)
 	external: [
-		"@xenova/transformers",
+		"@huggingface/transformers",
 		"onnxruntime-node",
 		"onnxruntime-web",
 		"sharp",
+		"better-sqlite3",
+		"sqlite-vec",
 	],
 };
 

@@ -219,7 +219,7 @@ await server.connect(transport);
 | `get_task` | Get task by ID | taskId |
 | `list_tasks` | List tasks with filters | status?, assignee?, labels? |
 | `update_task` | Update task fields | taskId, fields to update |
-| `search_tasks` | Search tasks by query | query, filters? |
+| `search` | Unified search (tasks + docs) | query, type?, mode?, filters |
 | `start_time` | Start timer | taskId |
 | `stop_time` | Stop current timer | - |
 | `get_time_entries` | Get time entries | taskId?, dateRange? |

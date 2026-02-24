@@ -69,10 +69,6 @@ export const listTasksSchema = z.object({
 	spec: z.string().optional(),
 });
 
-export const searchTasksSchema = z.object({
-	query: z.string(),
-});
-
 // Tool definitions
 export const taskTools = [
 	{
@@ -195,17 +191,6 @@ export const taskTools = [
 			},
 		},
 	},
-	{
-		name: "search_tasks",
-		description: "Search tasks by query string",
-		inputSchema: {
-			type: "object",
-			properties: {
-				query: { type: "string", description: "Search query" },
-			},
-			required: ["query"],
-		},
-	},
 ];
 
 // Handlers
@@ -230,12 +215,8 @@ export async function handleCreateTask(args: unknown, fileStore: FileStore) {
 	// Notify web server for real-time updates
 	await notifyTaskUpdate(task.id);
 
-	// Index task for semantic search (fire and forget)
-	getIndexService(getProjectRoot())
-		.indexTask(task)
-		.catch(() => {
-			// Silently ignore indexing errors
-		});
+	// Index task for semantic search
+	await getIndexService(getProjectRoot()).indexTask(task);
 
 	return successResponse({
 		task: {
@@ -396,12 +377,8 @@ export async function handleUpdateTask(args: unknown, fileStore: FileStore) {
 		}
 	}
 
-	// Index task for semantic search (fire and forget)
-	getIndexService(getProjectRoot())
-		.indexTask(task)
-		.catch(() => {
-			// Silently ignore indexing errors
-		});
+	// Index task for semantic search
+	await getIndexService(getProjectRoot()).indexTask(task);
 
 	return successResponse({
 		task: {
@@ -447,29 +424,6 @@ export async function handleListTasks(args: unknown, fileStore: FileStore) {
 			assignee: t.assignee,
 			labels: t.labels,
 			spec: t.spec,
-		})),
-	});
-}
-
-export async function handleSearchTasks(args: unknown, fileStore: FileStore) {
-	const input = searchTasksSchema.parse(args);
-	const tasks = await fileStore.getAllTasks();
-	const query = input.query.toLowerCase();
-
-	const results = tasks.filter(
-		(t) =>
-			t.title.toLowerCase().includes(query) ||
-			t.description?.toLowerCase().includes(query) ||
-			t.labels.some((l) => l.toLowerCase().includes(query)),
-	);
-
-	return successResponse({
-		count: results.length,
-		tasks: results.map((t) => ({
-			id: t.id,
-			title: t.title,
-			status: t.status,
-			priority: t.priority,
 		})),
 	});
 }

@@ -1,6 +1,6 @@
 /**
  * Index Service
- * Provides incremental indexing for tasks and docs
+ * Provides incremental indexing for tasks and docs using SQLite
  */
 
 import { existsSync } from "node:fs";
@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { Task } from "@models/task";
 import { chunkDocument, chunkTask } from "./chunker";
 import { EmbeddingService } from "./embedding";
-import { SearchIndexStore } from "./store";
+import { SearchStore } from "./store";
 import type { DocMetadata, EmbeddingModel } from "./types";
 
 /**
@@ -26,7 +26,7 @@ export interface IndexServiceConfig {
 export class IndexService {
 	private projectRoot: string;
 	private embeddingService: EmbeddingService | null = null;
-	private store: SearchIndexStore | null = null;
+	private store: SearchStore | null = null;
 	private initialized = false;
 	private enabled: boolean | null = null;
 	private model: EmbeddingModel = "gte-small";
@@ -86,9 +86,8 @@ export class IndexService {
 			// Load the model
 			await this.embeddingService.loadModel();
 
-			// Initialize store
-			this.store = new SearchIndexStore(this.projectRoot, this.model);
-			await this.store.getDatabase();
+			// Initialize SQLite store
+			this.store = new SearchStore(this.projectRoot, this.model);
 
 			this.initialized = true;
 			return true;
@@ -107,7 +106,7 @@ export class IndexService {
 
 		try {
 			// Remove existing chunks for this task
-			await this.store.removeChunks(`task:${task.id}:`);
+			this.store.removeChunks(`task:${task.id}:`);
 
 			// Create chunks from task
 			const chunkResult = chunkTask(task, this.model);
@@ -115,11 +114,8 @@ export class IndexService {
 			// Generate embeddings
 			const embeddedChunks = await this.embeddingService.embedChunks(chunkResult.chunks);
 
-			// Add to index
-			await this.store.addChunks(embeddedChunks);
-
-			// Save index to disk
-			await this.saveIndex();
+			// Add to SQLite (auto-persisted)
+			this.store.addChunks(embeddedChunks);
 		} catch (error) {
 			console.warn(`Failed to index task ${task.id}:`, error);
 		}
@@ -133,8 +129,7 @@ export class IndexService {
 		if (!ready || !this.store) return;
 
 		try {
-			await this.store.removeChunks(`task:${taskId}:`);
-			await this.saveIndex();
+			this.store.removeChunks(`task:${taskId}:`);
 		} catch (error) {
 			console.warn(`Failed to remove task ${taskId} from index:`, error);
 		}
@@ -149,7 +144,7 @@ export class IndexService {
 
 		try {
 			// Remove existing chunks for this doc
-			await this.store.removeChunks(`doc:${docPath}:`);
+			this.store.removeChunks(`doc:${docPath}:`);
 
 			// Create chunks from document
 			const chunkResult = chunkDocument(content, metadata, this.model);
@@ -157,11 +152,8 @@ export class IndexService {
 			// Generate embeddings
 			const embeddedChunks = await this.embeddingService.embedChunks(chunkResult.chunks);
 
-			// Add to index
-			await this.store.addChunks(embeddedChunks);
-
-			// Save index to disk
-			await this.saveIndex();
+			// Add to SQLite (auto-persisted)
+			this.store.addChunks(embeddedChunks);
 		} catch (error) {
 			console.warn(`Failed to index doc ${docPath}:`, error);
 		}
@@ -175,79 +167,31 @@ export class IndexService {
 		if (!ready || !this.store) return;
 
 		try {
-			await this.store.removeChunks(`doc:${docPath}:`);
-			await this.saveIndex();
+			this.store.removeChunks(`doc:${docPath}:`);
 		} catch (error) {
 			console.warn(`Failed to remove doc ${docPath} from index:`, error);
 		}
 	}
 
 	/**
-	 * Save the index to disk
+	 * Get the SQLite store (for search operations)
 	 */
-	private async saveIndex(): Promise<void> {
-		if (!this.store) return;
+	getStore(): SearchStore | null {
+		return this.store;
+	}
 
-		// Get all chunks from the database
-		const db = this.store.getDb();
-		if (!db) return;
+	/**
+	 * Get the embedding service
+	 */
+	getEmbeddingService(): EmbeddingService | null {
+		return this.embeddingService;
+	}
 
-		try {
-			const { search } = await import("@orama/orama");
-			const results = await search(db, { term: "", limit: 100000 });
-
-			// Reconstruct chunks with embeddings
-			const chunks = results.hits.map((hit) => {
-				const doc = hit.document as {
-					id: string;
-					type: string;
-					content: string;
-					docPath: string;
-					section: string;
-					taskId: string;
-					field: string;
-					status: string;
-					priority: string;
-					labels: string[];
-					embedding: number[];
-				};
-
-				if (doc.type === "doc") {
-					return {
-						id: doc.id,
-						type: "doc" as const,
-						docPath: doc.docPath,
-						section: doc.section,
-						content: doc.content,
-						tokenCount: Math.ceil(doc.content.length / 4),
-						embedding: doc.embedding,
-						metadata: {
-							headingLevel: 1,
-							position: 0,
-						},
-					};
-				}
-
-				return {
-					id: doc.id,
-					type: "task" as const,
-					taskId: doc.taskId,
-					field: doc.field as "description" | "title" | "implementationPlan" | "implementationNotes",
-					content: doc.content,
-					tokenCount: Math.ceil(doc.content.length / 4),
-					embedding: doc.embedding,
-					metadata: {
-						status: doc.status,
-						priority: doc.priority,
-						labels: doc.labels,
-					},
-				};
-			});
-
-			await this.store.save(chunks);
-		} catch (error) {
-			console.warn("Failed to save index:", error);
-		}
+	/**
+	 * Get the model
+	 */
+	getModel(): EmbeddingModel {
+		return this.model;
 	}
 
 	/**
@@ -256,6 +200,9 @@ export class IndexService {
 	dispose(): void {
 		if (this.embeddingService) {
 			this.embeddingService.dispose();
+		}
+		if (this.store) {
+			this.store.close();
 		}
 		this.embeddingService = null;
 		this.store = null;

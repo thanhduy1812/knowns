@@ -11,9 +11,8 @@ import type { Task } from "@models/index";
 import type { EmbeddingModel, SemanticSearchSettings } from "@models/project";
 import { chunkDocument, chunkTask } from "@search/chunker";
 import { EmbeddingService } from "@search/embedding";
-import { HybridSearchEngine, type SearchMode, type SearchResult } from "@search/engine";
-import { SearchIndexStore } from "@search/store";
-import type { Chunk } from "@search/types";
+import { SearchEngine, type SearchMode, type SearchResult } from "@search/engine";
+import { SearchStore } from "@search/store";
 import { FileStore } from "@storage/file-store";
 import { findProjectRoot } from "@utils/find-project-root";
 import { ProgressBar } from "@utils/progress-bar";
@@ -172,8 +171,8 @@ async function searchDocs(query: string, projectRoot: string): Promise<DocResult
 	}
 
 	try {
-		const files = await readdir(docsDir);
-		const mdFiles = files.filter((f) => f.endsWith(".md"));
+		// Use recursive search to find all .md files in subdirectories
+		const mdFiles = await getAllMdFiles(docsDir);
 		const results: DocResult[] = [];
 
 		for (const file of mdFiles) {
@@ -208,7 +207,7 @@ async function searchDocs(query: string, projectRoot: string): Promise<DocResult
 }
 
 /**
- * Build full search index from all tasks and docs
+ * Build full search index from all tasks and docs using SQLite
  */
 export async function rebuildIndex(
 	projectRoot: string,
@@ -223,7 +222,7 @@ export async function rebuildIndex(
 		dimensions: settings?.dimensions,
 		maxTokens: settings?.maxTokens,
 	});
-	const store = new SearchIndexStore(projectRoot, model);
+	const store = new SearchStore(projectRoot, model);
 
 	// Load embedding model
 	const needsDownload = !embeddingService.isModelDownloaded();
@@ -246,13 +245,7 @@ export async function rebuildIndex(
 	}
 
 	// Clear existing index
-	await store.clear();
-
-	// Initialize database
-	await store.initDatabase();
-
-	// Collect all chunks with embeddings for saving later
-	const allEmbeddedChunks: Chunk[] = [];
+	store.clear();
 
 	// Get all tasks
 	const tasks = await fileStore.getAllTasks();
@@ -271,8 +264,7 @@ export async function rebuildIndex(
 			if (!task) continue;
 			const chunkResult = chunkTask(task, model);
 			const embeddedChunks = await embeddingService.embedChunks(chunkResult.chunks);
-			await store.addChunks(embeddedChunks);
-			allEmbeddedChunks.push(...embeddedChunks);
+			store.addChunks(embeddedChunks);
 			taskChunksCount += embeddedChunks.length;
 
 			taskProgress.update(((i + 1) / tasks.length) * 100);
@@ -315,8 +307,7 @@ export async function rebuildIndex(
 			);
 
 			const embeddedChunks = await embeddingService.embedChunks(chunkResult.chunks);
-			await store.addChunks(embeddedChunks);
-			allEmbeddedChunks.push(...embeddedChunks);
+			store.addChunks(embeddedChunks);
 			docChunksCount += embeddedChunks.length;
 
 			docProgress.update(((i + 1) / allDocs.length) * 100);
@@ -324,13 +315,10 @@ export async function rebuildIndex(
 		docProgress.complete(`${allDocs.length} docs indexed (${docChunksCount} chunks)`);
 	}
 
-	// Save index with the chunks we collected (which have embeddings)
-	onProgress?.("Saving index...");
-	await store.save(allEmbeddedChunks);
-
 	onProgress?.(`Index rebuilt: ${tasks.length} tasks (${taskChunksCount} chunks), ${docChunksCount} doc chunks`);
 
 	// Cleanup
+	store.close();
 	embeddingService.dispose();
 }
 
@@ -375,9 +363,9 @@ async function showStatus(projectRoot: string): Promise<void> {
 		console.log(chalk.gray('  Run "knowns search --reindex" to download and build index'));
 	}
 
-	// Check index status
-	const store = new SearchIndexStore(projectRoot, settings.model);
-	const version = await store.getVersion();
+	// Check index status using SQLite store
+	const store = new SearchStore(projectRoot, settings.model);
+	const version = store.getVersion();
 
 	if (version) {
 		console.log(chalk.green(`  Index: ${version.itemCount} items, ${version.chunkCount} chunks`));
@@ -386,6 +374,8 @@ async function showStatus(projectRoot: string): Promise<void> {
 		console.log(chalk.yellow("  Index not built"));
 		console.log(chalk.gray('  Run "knowns search --reindex" to build index'));
 	}
+
+	store.close();
 }
 
 /**
@@ -469,6 +459,21 @@ export const searchCommand = new Command("search")
 				const settings = await getSemanticSearchSettings(projectRoot);
 				const useHybrid = settings?.enabled === true && settings.model && !options.keyword;
 
+				// Warn if semantic search is enabled but model not configured
+				if (settings?.enabled === true && !settings.model && !options.keyword) {
+					if (options.plain) {
+						console.log("WARNING: Semantic search is enabled but no model is configured.");
+						console.log("  Run: knowns model set <model>");
+						console.log("  Using keyword search instead.");
+						console.log();
+					} else {
+						console.log(chalk.yellow("⚠ Semantic search is enabled but no model is configured"));
+						console.log(chalk.gray("  Run: knowns model set <model>"));
+						console.log(chalk.gray("  Using keyword search instead."));
+						console.log();
+					}
+				}
+
 				// Perform search
 				if (useHybrid && settings?.model) {
 					// Use hybrid semantic search
@@ -510,37 +515,49 @@ async function performHybridSearch(
 		dimensions: settings?.dimensions,
 		maxTokens: settings?.maxTokens,
 	});
-	const store = new SearchIndexStore(projectRoot, model);
 
 	// Check if model is available
 	if (!embeddingService.isModelDownloaded()) {
 		if (options.plain) {
-			console.log("WARNING: Embedding model not downloaded. Falling back to keyword search.");
-			console.log("  To enable semantic search, run: knowns search --reindex");
-		} else {
-			console.log(chalk.yellow("⚠ Embedding model not downloaded"));
-			console.log(chalk.gray(`  Model: ${model}`));
-			console.log(chalk.gray("  To download and enable semantic search, run:"));
-			console.log(chalk.cyan("    knowns search --reindex"));
+			console.log("WARNING: Semantic search enabled but model not downloaded.");
+			console.log(`  Model: ${model}`);
+			console.log("  To enable semantic search:");
+			console.log(`    1. knowns model download ${model}`);
+			console.log("    2. knowns search --reindex");
+			console.log("  Using keyword search instead.");
 			console.log();
-			console.log(chalk.gray("Falling back to keyword search..."));
+		} else {
+			console.log(chalk.yellow("⚠ Semantic search enabled but model not downloaded"));
+			console.log(chalk.gray(`  Model: ${model}`));
+			console.log(chalk.gray("  To enable semantic search:"));
+			console.log(chalk.cyan(`    1. knowns model download ${model}`));
+			console.log(chalk.cyan("    2. knowns search --reindex"));
+			console.log();
+			console.log(chalk.gray("Using keyword search instead..."));
 			console.log();
 		}
 		await performKeywordSearch(query, projectRoot, options);
 		return;
 	}
 
+	// Use SQLite store
+	const store = new SearchStore(projectRoot, model);
+
 	// Check if index exists - auto-rebuild if missing
 	if (!store.indexExists()) {
 		if (options.plain) {
-			console.log("Search index not found. Building index...");
+			console.log("WARNING: Semantic search enabled but index not built.");
+			console.log("  Auto-rebuilding index from tasks and docs...");
+			console.log("  (Run 'knowns search --reindex' to manually rebuild)");
 		} else {
-			console.log(chalk.yellow("⚠ Search index not found (may have been gitignored or cloned fresh)"));
+			console.log(chalk.yellow("⚠ Semantic search enabled but index not built"));
+			console.log(chalk.gray("  May have been gitignored or project was freshly cloned"));
 			console.log(chalk.cyan("  Auto-rebuilding index from tasks and docs..."));
 			console.log();
 		}
 
-		// Auto-rebuild the index
+		// Auto-rebuild the index (this creates a new store internally)
+		store.close();
 		try {
 			await rebuildIndex(
 				projectRoot,
@@ -562,9 +579,6 @@ async function performHybridSearch(
 				console.log(chalk.green("✓ Index rebuilt successfully"));
 				console.log();
 			}
-
-			// Reload the store after rebuild
-			await store.load();
 		} catch (error) {
 			if (options.plain) {
 				console.log("WARNING: Failed to rebuild index. Falling back to keyword search.");
@@ -580,31 +594,46 @@ async function performHybridSearch(
 		}
 	}
 
-	// Load model and index
+	// Load model
 	await embeddingService.loadModel();
-	await store.load();
 
-	const engine = new HybridSearchEngine(store, embeddingService, model);
+	// Reopen store after potential rebuild
+	const searchStore = new SearchStore(projectRoot, model);
+	const engine = new SearchEngine(searchStore, embeddingService, model);
 
 	const searchType = options.type || "all";
 	const response = await engine.search(query, {
 		mode: "hybrid" as SearchMode,
 		type: searchType === "all" ? "all" : (searchType as "doc" | "task"),
-		status: options.status,
-		priority: options.priority,
-		labels: options.label ? [options.label] : undefined,
 		limit: 20,
 	});
 
+	// Filter results based on options (SQLite engine doesn't filter by status/priority/labels)
+	let filteredResults = response.results;
+	if (options.status) {
+		filteredResults = filteredResults.filter((r) => r.type !== "task" || r.metadata?.status === options.status);
+	}
+	if (options.priority) {
+		filteredResults = filteredResults.filter((r) => r.type !== "task" || r.metadata?.priority === options.priority);
+	}
+	if (options.label) {
+		const label = options.label;
+		filteredResults = filteredResults.filter(
+			(r) => r.type !== "task" || (r.metadata?.labels as string[] | undefined)?.includes(label),
+		);
+	}
+
 	// Output results
-	displayHybridResults(response.results, query, options.plain);
+	displayHybridResults(filteredResults, query, options.plain);
 
 	// Cleanup
+	searchStore.close();
 	embeddingService.dispose();
 }
 
 /**
  * Display hybrid search results
+ * Uses SearchResult from SearchEngine
  */
 function displayHybridResults(results: SearchResult[], query: string, plain?: boolean): void {
 	if (results.length === 0) {
@@ -635,7 +664,7 @@ function displayHybridResults(results: SearchResult[], query: string, plain?: bo
 			};
 
 			for (const result of taskResults) {
-				const status = result.status || "todo";
+				const status = (result.metadata?.status as string) || "todo";
 				if (!statusGroups[status]) {
 					statusGroups[status] = [];
 				}
@@ -649,10 +678,11 @@ function displayHybridResults(results: SearchResult[], query: string, plain?: bo
 				console.log(`  ${statusNames[status]}:`);
 				for (const task of tasks) {
 					const scorePercent = Math.round(task.score * 100);
-					console.log(`    #${task.taskId} [${task.status}] [${task.priority}] (${scorePercent}%)`);
-					console.log(
-						`      ${task.content.substring(0, 80).replace(/\n/g, " ")}${task.content.length > 80 ? "..." : ""}`,
-					);
+					const taskStatus = (task.metadata?.status as string) || "todo";
+					const taskPriority = (task.metadata?.priority as string) || "medium";
+					const content = task.snippet || task.title;
+					console.log(`    #${task.taskId} [${taskStatus}] [${taskPriority}] (${scorePercent}%)`);
+					console.log(`      ${content.substring(0, 80).replace(/\n/g, " ")}${content.length > 80 ? "..." : ""}`);
 					if (task.matchedBy && task.matchedBy.length > 0) {
 						console.log(`      Matched by: ${task.matchedBy.join(", ")}`);
 					}
@@ -666,9 +696,11 @@ function displayHybridResults(results: SearchResult[], query: string, plain?: bo
 
 			for (const doc of docResults) {
 				const scorePercent = Math.round(doc.score * 100);
-				console.log(`  ${doc.docPath} (${scorePercent}%)`);
-				if (doc.section) {
-					console.log(`    Section: ${doc.section}`);
+				const docPath = doc.path || doc.id;
+				console.log(`  ${docPath} (${scorePercent}%)`);
+				const section = doc.metadata?.section as string | undefined;
+				if (section) {
+					console.log(`    Section: ${section}`);
 				}
 				if (doc.matchedBy && doc.matchedBy.length > 0) {
 					console.log(`    Matched by: ${doc.matchedBy.join(", ")}`);
@@ -685,15 +717,18 @@ function displayHybridResults(results: SearchResult[], query: string, plain?: bo
 		if (taskResults.length > 0) {
 			console.log(chalk.bold("📋 Tasks:\n"));
 			for (const result of taskResults) {
-				const statusColor = getStatusColor(result.status || "todo");
-				const priorityColor = getPriorityColor(result.priority || "medium");
+				const taskStatus = (result.metadata?.status as string) || "todo";
+				const taskPriority = (result.metadata?.priority as string) || "medium";
+				const statusColor = getStatusColor(taskStatus);
+				const priorityColor = getPriorityColor(taskPriority);
 				const scorePercent = Math.round(result.score * 100);
+				const content = result.snippet || result.title;
 
 				const parts = [
 					chalk.gray(`#${result.taskId}`),
-					result.content.substring(0, 60) + (result.content.length > 60 ? "..." : ""),
-					statusColor(`[${result.status}]`),
-					priorityColor(`[${result.priority}]`),
+					content.substring(0, 60) + (content.length > 60 ? "..." : ""),
+					statusColor(`[${taskStatus}]`),
+					priorityColor(`[${taskPriority}]`),
 					chalk.gray(`(${scorePercent}%)`),
 				];
 
@@ -707,9 +742,11 @@ function displayHybridResults(results: SearchResult[], query: string, plain?: bo
 			console.log(chalk.bold("📚 Documentation:\n"));
 			for (const result of docResults) {
 				const scorePercent = Math.round(result.score * 100);
-				console.log(`  ${chalk.cyan(result.docPath)} ${chalk.gray(`(${scorePercent}%)`)}`);
-				if (result.section) {
-					console.log(chalk.gray(`    Section: ${result.section}`));
+				const docPath = result.path || result.id;
+				console.log(`  ${chalk.cyan(docPath)} ${chalk.gray(`(${scorePercent}%)`)}`);
+				const section = result.metadata?.section as string | undefined;
+				if (section) {
+					console.log(chalk.gray(`    Section: ${section}`));
 				}
 				console.log(chalk.gray(`    Matched by: ${result.matchedBy.join(", ")}`));
 				console.log();

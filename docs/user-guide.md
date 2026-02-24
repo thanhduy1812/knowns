@@ -9,9 +9,6 @@ Complete guide for using Knowns - a CLI-first knowledge layer and task managemen
 ### Installation
 
 ```bash
-# Homebrew (macOS/Linux) - no Node.js required
-brew install knowns-dev/tap/knowns
-
 # npm (requires Node.js 18+)
 npm install -g knowns
 
@@ -38,23 +35,19 @@ Running `knowns init` starts an interactive wizard:
 ? Project name: my-project
 ? Git tracking mode: Git Tracked (recommended for teams)
 ? AI Guidelines type: CLI
-? Select AI agent files to create/update:
-  ◉ CLAUDE.md (Claude Code)
-  ◉ AGENTS.md (Agent SDK)
-  ◯ GEMINI.md (Google Gemini)
-  ◯ .github/copilot-instructions.md (GitHub Copilot)
 ```
 
 **Wizard Options:**
 
-| Option | Choices | Description |
-|--------|---------|-------------|
-| **Project name** | Text | Name for your project |
-| **Git tracking mode** | `git-tracked` / `git-ignored` | How tasks are tracked in git |
-| **AI Guidelines type** | `CLI` / `MCP` | CLI commands or MCP tools format |
-| **Agent files** | Multi-select | Which AI instruction files to create |
+| Option                 | Choices                       | Description                          |
+| ---------------------- | ----------------------------- | ------------------------------------ |
+| **Project name**       | Text                          | Name for your project                |
+| **Git tracking mode**  | `git-tracked` / `git-ignored` | How tasks are tracked in git         |
+| **AI Guidelines type** | `CLI` / `MCP`                 | CLI commands or MCP tools format     |
+| **Agent files**        | Multi-select                  | Which AI instruction files to create |
 
 **What happens:**
+
 - Creates `.knowns/` directory with `tasks/`, `docs/`, `templates/`, `config.json`
 - If **MCP** selected: Creates `.mcp.json` for Claude Code auto-discovery
 - If **git-ignored** selected: Updates `.gitignore` to exclude tasks (docs/templates still tracked)
@@ -90,6 +83,7 @@ knowns browser
 ### Task Commands
 
 #### Create Task
+
 ```bash
 knowns task create "Title" [options]
 ```
@@ -105,11 +99,13 @@ knowns task create "Title" [options]
 | `--assignee` | `-a` | Assign to user (@me, @username) |
 
 **Examples:**
+
 ```bash
 knowns task create "Add login" -d "Implement user login" --ac "Login form works" --ac "JWT tokens stored" -l "auth,feature" --priority high
 ```
 
 #### View Task
+
 ```bash
 knowns task <id> [--plain]           # Shorthand
 knowns task view <id> [--plain]      # Full command
@@ -118,6 +114,7 @@ knowns task view <id> [--plain]      # Full command
 - `--plain` - Plain text output (for AI agents)
 
 #### List Tasks
+
 ```bash
 knowns task list [options]
 ```
@@ -133,12 +130,14 @@ knowns task list [options]
 | `--plain` | Plain text output |
 
 **Examples:**
+
 ```bash
 knowns task list --status in-progress --assignee @me
 knowns task list --tree --plain
 ```
 
 #### Edit Task
+
 ```bash
 knowns task edit <id> [options]
 ```
@@ -160,6 +159,7 @@ knowns task edit <id> [options]
 | `--append-notes` | | Append to notes |
 
 **Examples:**
+
 ```bash
 knowns task edit 42 -s in-progress -a @me
 knowns task edit 42 --check-ac 1 --check-ac 2
@@ -169,6 +169,7 @@ knowns task edit 42 --append-notes "✓ Feature implemented"
 ### Documentation Commands
 
 #### Create Document
+
 ```bash
 knowns doc create "Title" [options]
 ```
@@ -181,12 +182,14 @@ knowns doc create "Title" [options]
 | `--folder` | `-f` | Folder path |
 
 #### View Document
+
 ```bash
 knowns doc <path> [--plain]          # Shorthand
 knowns doc view "path/name" [--plain] # Full command
 ```
 
 #### Edit Document
+
 ```bash
 knowns doc edit "name" [options]
 ```
@@ -200,6 +203,7 @@ knowns doc edit "name" [options]
 | `--append` | `-a` | Append to content |
 
 #### List Documents
+
 ```bash
 knowns doc list [--tag <tag>] [--plain]
 ```
@@ -207,38 +211,45 @@ knowns doc list [--tag <tag>] [--plain]
 ### Time Tracking Commands
 
 #### Start Timer
+
 ```bash
 knowns time start <task-id>
 ```
 
 #### Stop Timer
+
 ```bash
 knowns time stop
 ```
 
 #### Pause/Resume Timer
+
 ```bash
 knowns time pause
 knowns time resume
 ```
 
 #### Check Timer Status
+
 ```bash
 knowns time status
 ```
 
 #### Add Manual Entry
+
 ```bash
 knowns time add <task-id> <duration> [-n "note"] [-d "date"]
 ```
 
 **Examples:**
+
 ```bash
 knowns time add 42 2h -n "Code review"
 knowns time add 42 30m -d "2025-12-25"
 ```
 
 #### Generate Report
+
 ```bash
 knowns time report [options]
 ```
@@ -270,6 +281,7 @@ knowns search "query" [options]
 Manage embedding models for semantic search.
 
 #### List Models
+
 ```bash
 knowns model list
 ```
@@ -277,6 +289,7 @@ knowns model list
 Shows all available models (built-in + custom) with download status.
 
 #### Download Model
+
 ```bash
 knowns model download <model-id>
 ```
@@ -291,21 +304,25 @@ knowns model download <model-id>
 | `e5-small-v2` | Balanced | 384 | General use |
 
 #### Set Model for Project
+
 ```bash
 knowns model set <model-id>
 ```
 
 After changing models, rebuild the search index:
+
 ```bash
 knowns search --reindex
 ```
 
 #### Add Custom Model
+
 ```bash
 knowns model add <huggingface-id> [--dims <n>] [--tokens <n>]
 ```
 
 **Example:**
+
 ```bash
 knowns model add Xenova/bge-large-en-v1.5 --dims 1024 --tokens 512
 knowns model download bge-large-en-v1.5
@@ -313,6 +330,7 @@ knowns model set bge-large-en-v1.5
 ```
 
 #### Check Status
+
 ```bash
 knowns model status
 ```
@@ -324,11 +342,13 @@ Shows downloaded models, disk usage, and current project configuration.
 Templates help you generate boilerplate code consistently.
 
 #### List Templates
+
 ```bash
 knowns template list [--plain]
 ```
 
 #### Run Template
+
 ```bash
 knowns template run <name> [options]
 ```
@@ -341,6 +361,7 @@ knowns template run <name> [options]
 | `--no-<variable>` | Set boolean to false |
 
 **Examples:**
+
 ```bash
 # Interactive mode
 knowns template run react-component
@@ -353,16 +374,19 @@ knowns template run react-component --dry-run
 ```
 
 #### View Template
+
 ```bash
 knowns template view <name> [--with-doc] [--plain]
 ```
 
 #### Create Template
+
 ```bash
 knowns template create <name> [-d "description"] [--doc <path>]
 ```
 
 **Example:**
+
 ```bash
 knowns template create api-service -d "REST API service" --doc patterns/api
 ```
@@ -372,16 +396,19 @@ knowns template create api-service -d "REST API service" --doc patterns/api
 Skills are AI workflow instructions that sync across platforms.
 
 #### List Skills
+
 ```bash
 knowns skill list [--plain]
 ```
 
 #### Create Skill
+
 ```bash
 knowns skill create <name> [-d "description"]
 ```
 
 #### Sync Skills
+
 ```bash
 knowns skill sync [--platform <platforms>]
 ```
@@ -389,6 +416,7 @@ knowns skill sync [--platform <platforms>]
 **Supported platforms:** `claude`, `antigravity`, `cursor`, `gemini`
 
 **Examples:**
+
 ```bash
 # Sync to all platforms
 knowns skill sync
@@ -398,6 +426,7 @@ knowns skill sync --platform claude,cursor
 ```
 
 #### Check Status
+
 ```bash
 knowns skill status
 ```
@@ -409,6 +438,7 @@ knowns skill status
 ### What are Templates?
 
 Templates are code generators that create files from Handlebars templates with interactive prompts. They help you:
+
 - Generate consistent boilerplate code
 - Follow project patterns automatically
 - Speed up repetitive file creation
@@ -451,6 +481,7 @@ knowns template create my-component
 ```
 
 **Example `_template.yaml`:**
+
 ```yaml
 name: my-component
 description: My custom component
@@ -481,12 +512,12 @@ actions:
 
 ### Handlebars Helpers
 
-| Helper | Example | Output |
-|--------|---------|--------|
-| `pascalCase` | `{{pascalCase "user profile"}}` | `UserProfile` |
-| `camelCase` | `{{camelCase "user profile"}}` | `userProfile` |
-| `kebabCase` | `{{kebabCase "user profile"}}` | `user-profile` |
-| `snakeCase` | `{{snakeCase "user profile"}}` | `user_profile` |
+| Helper       | Example                         | Output         |
+| ------------ | ------------------------------- | -------------- |
+| `pascalCase` | `{{pascalCase "user profile"}}` | `UserProfile`  |
+| `camelCase`  | `{{camelCase "user profile"}}`  | `userProfile`  |
+| `kebabCase`  | `{{kebabCase "user profile"}}`  | `user-profile` |
+| `snakeCase`  | `{{snakeCase "user profile"}}`  | `user_profile` |
 
 ### Template-Doc Linking
 
@@ -499,6 +530,7 @@ doc: patterns/react-component
 
 ```markdown
 # In doc
+
 Related: @template/react-component
 ```
 
@@ -517,6 +549,7 @@ This opens `http://localhost:6420` in your browser.
 ### Navigation
 
 The sidebar provides access to:
+
 - **Kanban** - Visual task board
 - **Tasks** - Table view of all tasks
 - **Docs** - Documentation browser
@@ -525,6 +558,7 @@ The sidebar provides access to:
 ### Kanban Board
 
 The Kanban board displays tasks in columns by status:
+
 - **Todo** - Tasks not yet started
 - **In Progress** - Tasks being worked on
 - **In Review** - Tasks in code review
@@ -532,6 +566,7 @@ The Kanban board displays tasks in columns by status:
 - **Done** - Completed tasks
 
 **Features:**
+
 - Drag and drop tasks between columns
 - Click task card to view details
 - "New Task" button to create tasks
@@ -540,6 +575,7 @@ The Kanban board displays tasks in columns by status:
 ### Task Details
 
 Click any task to open the detail panel:
+
 - View/edit title, description
 - Check acceptance criteria
 - Change status, priority, assignee
@@ -549,16 +585,17 @@ Click any task to open the detail panel:
 ### Real-time Sync
 
 The Web UI syncs in real-time with CLI changes:
+
 - Tasks updated via CLI appear instantly
 - Multiple browser tabs stay synchronized
 - SSE connection for live updates (auto-reconnects on sleep/wake)
 
 ### Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
+| Shortcut        | Action              |
+| --------------- | ------------------- |
 | `⌘K` / `Ctrl+K` | Open command search |
-| `Esc` | Close dialogs |
+| `Esc`           | Close dialogs       |
 
 ---
 
@@ -567,12 +604,14 @@ The Web UI syncs in real-time with CLI changes:
 ### Workflow
 
 1. **Start work on a task:**
+
    ```bash
    knowns task edit 42 -s in-progress -a @me
    knowns time start 42
    ```
 
 2. **Take a break:**
+
    ```bash
    knowns time pause
    # ... break ...
@@ -601,6 +640,7 @@ knowns time report --csv > report.csv
 ### Manual Entries
 
 For time worked without the timer:
+
 ```bash
 knowns time add 42 1h30m -n "Pair programming session"
 ```
@@ -640,24 +680,24 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 
 ### Available MCP Tools
 
-| Tool | Description |
-|------|-------------|
-| `get_task` | Get task details by ID |
-| `list_tasks` | List tasks with filters |
-| `create_task` | Create a new task |
-| `update_task` | Update task fields |
-| `get_doc` | Get document content |
-| `list_docs` | List all documents |
-| `search_tasks` | Search tasks |
-| `search_docs` | Search docs |
-| `list_templates` | List available templates |
-| `get_template` | Get template config |
-| `run_template` | Run template (use `dryRun: true` first) |
-| `create_template` | Create new template |
+| Tool              | Description                                         |
+| ----------------- | --------------------------------------------------- |
+| `get_task`        | Get task details by ID                              |
+| `list_tasks`      | List tasks with filters                             |
+| `create_task`     | Create a new task                                   |
+| `update_task`     | Update task fields                                  |
+| `get_doc`         | Get document content                                |
+| `list_docs`       | List all documents                                  |
+| `search`          | Unified search (tasks + docs) with semantic support |
+| `list_templates`  | List available templates                            |
+| `get_template`    | Get template config                                 |
+| `run_template`    | Run template (use `dryRun: true` first)             |
+| `create_template` | Create new template                                 |
 
 ### Plain Text Mode
 
 Always use `--plain` flag when AI agents call CLI commands:
+
 ```bash
 knowns task 42 --plain
 knowns task list --plain
@@ -667,6 +707,7 @@ knowns doc "README" --plain
 ### Reference System
 
 Tasks, docs, and templates can reference each other:
+
 - `@task-42` → Links to task 42
 - `@doc/patterns/module` → Links to document
 - `@template/react-component` → Links to template
@@ -694,7 +735,6 @@ knowns sync --type mcp
 knowns sync --type unified
 ```
 
-
 ---
 
 ## Troubleshooting
@@ -702,19 +742,24 @@ knowns sync --type unified
 ### Common Issues
 
 #### "Error: Not initialized"
+
 Run `knowns init` in your project directory first.
 
 #### "Error: Task not found"
+
 Check the task ID with `knowns task list --plain`.
 
 #### "Error: Timer already running"
+
 Stop the current timer with `knowns time stop` before starting a new one.
 
 #### Web UI won't start
+
 - Check if port 6420 is available
 - Try `knowns browser --port 6421`
 
 #### Tasks not syncing
+
 - Refresh the browser
 - Check SSE connection in browser dev tools
 - Wait for auto-reconnection if computer was asleep
@@ -731,6 +776,7 @@ knowns task create --help
 ### Debug Mode
 
 For detailed logging:
+
 ```bash
 DEBUG=knowns:* knowns <command>
 ```

@@ -285,13 +285,15 @@ async function downloadModel(modelId: string): Promise<void> {
 
 	try {
 		// Dynamic import transformers.js
-		const { pipeline, env } = await import("@xenova/transformers");
+		const { pipeline, env } = await import("@huggingface/transformers");
 
 		// Configure cache directory
 		env.cacheDir = getModelsDir();
 
 		// Download by creating a pipeline (this triggers download)
+		// Use quantized model for smaller size and faster inference
 		await pipeline("feature-extraction", model.huggingFaceId, {
+			quantized: true,
 			progress_callback: (data: { progress?: number; status?: string }) => {
 				if (typeof data.progress === "number" && data.progress > 0 && data.progress < 100) {
 					progressBar.update(data.progress);
@@ -347,16 +349,19 @@ async function setModel(modelId: string): Promise<void> {
 	try {
 		const config = JSON.parse(await readFile(configPath, "utf-8"));
 
-		// Update semantic search config
-		config.semanticSearch = config.semanticSearch || { enabled: true };
-		config.semanticSearch.model = model.id;
-		config.semanticSearch.huggingFaceId = model.huggingFaceId;
-		config.semanticSearch.dimensions = model.dimensions;
-		config.semanticSearch.maxTokens = model.maxTokens;
+		// Update semantic search config in settings (where search.ts reads from)
+		config.settings = config.settings || {};
+		config.settings.semanticSearch = config.settings.semanticSearch || { enabled: true };
+		config.settings.semanticSearch.enabled = true;
+		config.settings.semanticSearch.model = model.id;
+		config.settings.semanticSearch.huggingFaceId = model.huggingFaceId;
+		config.settings.semanticSearch.dimensions = model.dimensions;
+		config.settings.semanticSearch.maxTokens = model.maxTokens;
 
 		await writeFile(configPath, JSON.stringify(config, null, "\t"));
 
 		console.log(chalk.green(`✓ Model set to: ${model.id}`));
+		console.log(chalk.green("✓ Semantic search enabled"));
 		console.log(chalk.yellow("\n⚠ Run 'knowns search --reindex' to rebuild the search index"));
 	} catch (error) {
 		console.log(chalk.red("✗ Failed to update config"));

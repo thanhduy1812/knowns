@@ -13,7 +13,7 @@ knowns search "keyword" --type task --plain
 ### MCP
 ```json
 // Search for existing tasks first
-mcp__knowns__search_tasks({ "query": "keyword" })
+mcp__knowns__search({ "query": "keyword", "type": "task" })
 ```
 {{/if}}
 

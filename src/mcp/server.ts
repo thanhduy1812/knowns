@@ -44,8 +44,6 @@ import {
 	handleReindexSearch,
 	handleRunTemplate,
 	handleSearch,
-	handleSearchDocs,
-	handleSearchTasks,
 	handleSetProject,
 	handleStartTime,
 	handleStopTime,
@@ -138,8 +136,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 				return await handleUpdateTask(args, getFileStore());
 			case "list_tasks":
 				return await handleListTasks(args, getFileStore());
-			case "search_tasks":
-				return await handleSearchTasks(args, getFileStore());
 
 			// Time handlers
 			case "start_time":
@@ -164,8 +160,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 				return await handleCreateDoc(args);
 			case "update_doc":
 				return await handleUpdateDoc(args);
-			case "search_docs":
-				return await handleSearchDocs(args);
 
 			// Template handlers
 			case "list_templates":

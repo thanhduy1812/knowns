@@ -12,14 +12,14 @@ description: Use when you need to understand existing code, find patterns, or ex
 ## Step 1: Search Documentation
 
 ```json
-mcp__knowns__search_docs({ "query": "<topic>" })
+mcp__knowns__search({ "query": "<topic>", "type": "doc" })
 mcp__knowns__get_doc({ "path": "<path>", "smart": true })
 ```
 
 ## Step 2: Search Completed Tasks
 
 ```json
-mcp__knowns__search_tasks({ "query": "<keywords>" })
+mcp__knowns__search({ "query": "<keywords>", "type": "task" })
 mcp__knowns__get_task({ "taskId": "<id>" })
 ```
 

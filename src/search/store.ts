@@ -1,19 +1,17 @@
 /**
- * Search Index Store
- * Persists Orama search index to .knowns/search-index/
+ * SQLite-based Search Index Store
+ * Uses better-sqlite3 + sqlite-vec for native vector search
  */
 
-import { existsSync } from "node:fs";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import Database from "better-sqlite3";
+import * as sqliteVec from "sqlite-vec";
 import type { Chunk, DocChunk, EmbeddingModel, TaskChunk } from "./types";
 import { EMBEDDING_MODELS } from "./types";
 
-// Orama types (dynamic import)
-type OramaDB = Awaited<ReturnType<typeof import("@orama/orama")["create"]>>;
-
 /**
- * Version info stored in version.json
+ * Version info stored in metadata table
  */
 export interface IndexVersion {
 	model: EmbeddingModel;
@@ -25,397 +23,467 @@ export interface IndexVersion {
 }
 
 /**
- * Stored chunk format (without embedding for index.json)
+ * Search result with score
  */
-interface StoredChunkMeta {
-	id: string;
-	type: "doc" | "task";
-	// Doc-specific
-	docPath?: string;
-	section?: string;
-	headingLevel?: number;
-	parentSection?: string;
-	position?: number;
-	// Task-specific
-	taskId?: string;
-	field?: string;
-	status?: string;
-	priority?: string;
-	labels?: string[];
-	// Common
-	content: string;
-	tokenCount: number;
+export interface SearchResult {
+	chunk: Chunk;
+	score: number;
 }
 
 /**
- * Search Index Store
+ * SQLite Search Index Store with native vector search
  */
-export class SearchIndexStore {
-	private projectRoot: string;
-	private indexPath: string;
-	private db: OramaDB | null = null;
+export class SearchStore {
+	private db: Database.Database;
 	private model: EmbeddingModel;
 	private dimensions: number;
+	private dbPath: string;
 
 	constructor(projectRoot: string, model: EmbeddingModel = "gte-small") {
-		this.projectRoot = projectRoot;
-		this.indexPath = join(projectRoot, ".knowns", "search-index");
 		this.model = model;
-		this.dimensions = EMBEDDING_MODELS[model].dimensions;
+		this.dimensions = EMBEDDING_MODELS[model]?.dimensions || 384;
+		this.dbPath = join(projectRoot, ".knowns", ".search", "index.db");
+
+		// Ensure directory exists
+		const dir = dirname(this.dbPath);
+		if (!existsSync(dir)) {
+			mkdirSync(dir, { recursive: true });
+		}
+
+		// Open database
+		this.db = new Database(this.dbPath);
+		this.db.pragma("journal_mode = WAL");
+
+		// Load sqlite-vec extension
+		sqliteVec.load(this.db);
+
+		// Initialize schema
+		this.initSchema();
 	}
 
 	/**
-	 * Get paths for index files
+	 * Initialize database schema with vec0 virtual table
 	 */
-	private getPaths() {
-		return {
-			dir: this.indexPath,
-			version: join(this.indexPath, "version.json"),
-			index: join(this.indexPath, "index.json"),
-			embeddings: join(this.indexPath, "embeddings.bin"),
-		};
+	private initSchema(): void {
+		// Metadata table
+		this.db.exec(`
+			CREATE TABLE IF NOT EXISTS metadata (
+				key TEXT PRIMARY KEY,
+				value TEXT
+			);
+		`);
+
+		// Chunks metadata table with vec_rowid to link with vec_chunks
+		this.db.exec(`
+			CREATE TABLE IF NOT EXISTS chunks (
+				id TEXT PRIMARY KEY,
+				vec_rowid INTEGER,
+				type TEXT NOT NULL,
+				content TEXT NOT NULL,
+				token_count INTEGER NOT NULL,
+				doc_path TEXT,
+				section TEXT,
+				heading_level INTEGER,
+				parent_section TEXT,
+				position INTEGER,
+				task_id TEXT,
+				field TEXT,
+				status TEXT,
+				priority TEXT,
+				labels TEXT
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_chunks_type ON chunks(type);
+			CREATE INDEX IF NOT EXISTS idx_chunks_doc_path ON chunks(doc_path);
+			CREATE INDEX IF NOT EXISTS idx_chunks_task_id ON chunks(task_id);
+			CREATE INDEX IF NOT EXISTS idx_chunks_vec_rowid ON chunks(vec_rowid);
+		`);
+
+		// Vector table using sqlite-vec (auto rowid)
+		this.db.exec(`
+			CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
+				embedding float[${this.dimensions}]
+			);
+		`);
+
+		// Set initial metadata if not exists
+		const version = this.getVersion();
+		if (!version) {
+			this.setMetadata("model", this.model);
+			this.setMetadata("dimensions", String(this.dimensions));
+			this.setMetadata("modelVersion", "1.0.0");
+		}
 	}
 
 	/**
-	 * Check if index exists
+	 * Set metadata value
 	 */
-	indexExists(): boolean {
-		const paths = this.getPaths();
-		return existsSync(paths.version) && existsSync(paths.index);
+	private setMetadata(key: string, value: string): void {
+		this.db.prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)").run(key, value);
+	}
+
+	/**
+	 * Get metadata value
+	 */
+	private getMetadata(key: string): string | null {
+		const row = this.db.prepare("SELECT value FROM metadata WHERE key = ?").get(key) as { value: string } | undefined;
+		return row?.value ?? null;
 	}
 
 	/**
 	 * Get current index version
 	 */
-	async getVersion(): Promise<IndexVersion | null> {
-		const paths = this.getPaths();
-		if (!existsSync(paths.version)) {
-			return null;
-		}
+	getVersion(): IndexVersion | null {
+		const model = this.getMetadata("model");
+		if (!model) return null;
 
-		try {
-			const content = await readFile(paths.version, "utf-8");
-			return JSON.parse(content);
-		} catch {
-			return null;
-		}
+		const count = this.db.prepare("SELECT COUNT(*) as count FROM chunks").get() as { count: number };
+
+		return {
+			model: model as EmbeddingModel,
+			modelVersion: this.getMetadata("modelVersion") || "1.0.0",
+			dimensions: Number.parseInt(this.getMetadata("dimensions") || "384", 10),
+			indexedAt: this.getMetadata("indexedAt") || new Date().toISOString(),
+			itemCount: this.countUniqueItems(),
+			chunkCount: count.count,
+		};
 	}
 
 	/**
-	 * Check if index needs rebuild (model changed)
+	 * Check if index exists and has data
 	 */
-	async needsRebuild(): Promise<boolean> {
-		const version = await this.getVersion();
-		if (!version) return true;
-
-		// Rebuild if model changed
-		if (version.model !== this.model) return true;
-
-		// Rebuild if dimensions mismatch
-		if (version.dimensions !== this.dimensions) return true;
-
-		return false;
+	indexExists(): boolean {
+		const count = this.db.prepare("SELECT COUNT(*) as count FROM chunks").get() as { count: number };
+		return count.count > 0;
 	}
 
 	/**
-	 * Initialize the Orama database
+	 * Check if rebuild needed (model changed)
 	 */
-	async initDatabase(): Promise<OramaDB> {
-		const { create } = await import("@orama/orama");
-
-		this.db = await create({
-			schema: {
-				id: "string",
-				type: "string", // "doc" | "task"
-				content: "string",
-				// Doc fields
-				docPath: "string",
-				section: "string",
-				// Task fields
-				taskId: "string",
-				field: "string",
-				status: "string",
-				priority: "string",
-				labels: "string[]",
-				// Vector
-				embedding: `vector[${this.dimensions}]`,
-			},
-		});
-
-		return this.db;
+	needsRebuild(): boolean {
+		const storedModel = this.getMetadata("model");
+		if (!storedModel) return false;
+		return storedModel !== this.model;
 	}
 
 	/**
-	 * Get or create database
+	 * Serialize embedding to binary buffer for sqlite-vec
 	 */
-	async getDatabase(): Promise<OramaDB> {
-		if (this.db) return this.db;
+	private serializeEmbedding(embedding: number[]): Buffer {
+		const float32 = new Float32Array(embedding);
+		return Buffer.from(float32.buffer);
+	}
 
-		// Try to load from disk
-		if (this.indexExists() && !(await this.needsRebuild())) {
-			await this.load();
-			if (this.db) return this.db;
-		}
-
-		// Create new database
-		return this.initDatabase();
+	/**
+	 * Deserialize embedding from binary
+	 */
+	private deserializeEmbedding(buffer: Buffer): number[] {
+		const float32 = new Float32Array(buffer.buffer, buffer.byteOffset, buffer.length / 4);
+		return Array.from(float32);
 	}
 
 	/**
 	 * Add chunks to index
 	 */
-	async addChunks(chunks: Chunk[]): Promise<void> {
-		const db = await this.getDatabase();
-		const { insert } = await import("@orama/orama");
+	addChunks(chunks: Chunk[]): void {
+		// Delete existing chunk by id first (for update)
+		const getVecRowid = this.db.prepare("SELECT vec_rowid FROM chunks WHERE id = ?");
+		const deleteVec = this.db.prepare("DELETE FROM vec_chunks WHERE rowid = ?");
+		const deleteChunk = this.db.prepare("DELETE FROM chunks WHERE id = ?");
 
-		let skippedCount = 0;
-		for (const chunk of chunks) {
-			if (!chunk.embedding) {
-				skippedCount++;
-				continue;
-			}
+		const insertVec = this.db.prepare("INSERT INTO vec_chunks (embedding) VALUES (?)");
 
-			if (chunk.type === "doc") {
-				const docChunk = chunk as DocChunk;
-				await insert(db, {
-					id: chunk.id,
-					type: "doc",
-					content: chunk.content,
-					docPath: docChunk.docPath,
-					section: docChunk.section,
-					taskId: "",
-					field: "",
-					status: "",
-					priority: "",
-					labels: [],
-					embedding: chunk.embedding,
-				});
-			} else {
-				const taskChunk = chunk as TaskChunk;
-				await insert(db, {
-					id: chunk.id,
-					type: "task",
-					content: chunk.content,
-					docPath: "",
-					section: "",
-					taskId: taskChunk.taskId,
-					field: taskChunk.field,
-					status: taskChunk.metadata.status,
-					priority: taskChunk.metadata.priority,
-					labels: taskChunk.metadata.labels,
-					embedding: chunk.embedding,
-				});
+		const insertChunk = this.db.prepare(`
+			INSERT INTO chunks
+			(id, vec_rowid, type, content, token_count, doc_path, section, heading_level, parent_section, position,
+			 task_id, field, status, priority, labels)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`);
+
+		const insertMany = this.db.transaction((chunks: Chunk[]) => {
+			for (const chunk of chunks) {
+				if (!chunk.embedding) continue;
+
+				// Delete existing if any
+				const existing = getVecRowid.get(chunk.id) as { vec_rowid: number } | undefined;
+				if (existing?.vec_rowid) {
+					deleteVec.run(existing.vec_rowid);
+				}
+				deleteChunk.run(chunk.id);
+
+				const embeddingBlob = this.serializeEmbedding(chunk.embedding);
+
+				// Insert vector first to get auto rowid
+				const vecResult = insertVec.run(embeddingBlob);
+				const vecRowid = vecResult.lastInsertRowid;
+
+				// Then insert chunk with vec_rowid reference
+				if (chunk.type === "doc") {
+					const docChunk = chunk as DocChunk;
+					insertChunk.run(
+						chunk.id,
+						vecRowid,
+						"doc",
+						chunk.content,
+						chunk.tokenCount,
+						docChunk.docPath,
+						docChunk.section,
+						docChunk.metadata.headingLevel,
+						docChunk.metadata.parentSection || null,
+						docChunk.metadata.position,
+						null,
+						null,
+						null,
+						null,
+						null,
+					);
+				} else {
+					const taskChunk = chunk as TaskChunk;
+					insertChunk.run(
+						chunk.id,
+						vecRowid,
+						"task",
+						chunk.content,
+						chunk.tokenCount,
+						null,
+						null,
+						null,
+						null,
+						null,
+						taskChunk.taskId,
+						taskChunk.field,
+						taskChunk.metadata.status,
+						taskChunk.metadata.priority,
+						JSON.stringify(taskChunk.metadata.labels),
+					);
+				}
 			}
-		}
+		});
+
+		insertMany(chunks);
+
+		// Update metadata
+		this.setMetadata("indexedAt", new Date().toISOString());
 	}
 
 	/**
 	 * Remove chunks by ID prefix
 	 */
-	async removeChunks(idPrefix: string): Promise<void> {
-		const db = await this.getDatabase();
-		const { remove, search } = await import("@orama/orama");
-
-		// Find all chunks with matching prefix
-		const results = await search(db, {
-			term: "",
-			limit: 10000,
-		});
-
-		for (const hit of results.hits) {
-			const doc = hit.document as { id: string };
-			if (doc.id.startsWith(idPrefix)) {
-				await remove(db, doc.id);
-			}
+	removeChunks(idPrefix: string): void {
+		// Remove from both tables - delete vec_chunks first using vec_rowid from chunks
+		const rowids = this.db
+			.prepare("SELECT vec_rowid FROM chunks WHERE id LIKE ? AND vec_rowid IS NOT NULL")
+			.all(`${idPrefix}%`) as Array<{ vec_rowid: number }>;
+		for (const { vec_rowid } of rowids) {
+			this.db.prepare("DELETE FROM vec_chunks WHERE rowid = ?").run(vec_rowid);
 		}
+		this.db.prepare("DELETE FROM chunks WHERE id LIKE ?").run(`${idPrefix}%`);
 	}
 
 	/**
-	 * Save index to disk
+	 * Search for similar chunks using sqlite-vec native vector search
 	 */
-	async save(chunks: Chunk[]): Promise<void> {
-		const paths = this.getPaths();
+	search(
+		queryEmbedding: number[],
+		options: {
+			type?: "doc" | "task" | "all";
+			limit?: number;
+			minScore?: number;
+		} = {},
+	): SearchResult[] {
+		const { type = "all", limit = 20, minScore = 0.3 } = options;
 
-		// Ensure directory exists
-		if (!existsSync(paths.dir)) {
-			await mkdir(paths.dir, { recursive: true });
+		const embeddingBlob = this.serializeEmbedding(queryEmbedding);
+
+		// Use sqlite-vec MATCH for vector search with k constraint
+		// vec_chunks returns distance (lower = more similar), we convert to score
+		// Note: sqlite-vec requires k = ? in WHERE clause for KNN queries
+		const k = limit * 2;
+
+		let sql = `
+			SELECT
+				v.rowid as vec_rowid,
+				v.distance,
+				c.*
+			FROM vec_chunks v
+			JOIN chunks c ON c.vec_rowid = v.rowid
+			WHERE v.embedding MATCH ? AND k = ${k}
+		`;
+
+		if (type !== "all") {
+			sql += ` AND c.type = '${type}'`;
 		}
 
-		// Save version info
-		const version: IndexVersion = {
-			model: this.model,
-			modelVersion: "1.0.0",
-			dimensions: this.dimensions,
-			indexedAt: new Date().toISOString(),
-			itemCount: this.countUniqueItems(chunks),
-			chunkCount: chunks.length,
-		};
-		await writeFile(paths.version, JSON.stringify(version, null, 2));
+		sql += `
+			ORDER BY v.distance
+		`;
 
-		// Save chunk metadata (without embeddings for readability)
-		const chunkMeta: StoredChunkMeta[] = chunks.map((chunk) => {
-			if (chunk.type === "doc") {
-				const docChunk = chunk as DocChunk;
-				return {
-					id: chunk.id,
-					type: "doc" as const,
-					docPath: docChunk.docPath,
-					section: docChunk.section,
-					headingLevel: docChunk.metadata.headingLevel,
-					parentSection: docChunk.metadata.parentSection,
-					position: docChunk.metadata.position,
-					content: chunk.content,
-					tokenCount: chunk.tokenCount,
-				};
+		const rows = this.db.prepare(sql).all(embeddingBlob) as Array<{
+			vec_rowid: number;
+			distance: number;
+			id: string;
+			type: string;
+			content: string;
+			token_count: number;
+			doc_path: string | null;
+			section: string | null;
+			heading_level: number | null;
+			parent_section: string | null;
+			position: number | null;
+			task_id: string | null;
+			field: string | null;
+			status: string | null;
+			priority: string | null;
+			labels: string | null;
+		}>;
+
+		const results: SearchResult[] = [];
+
+		for (const row of rows) {
+			// Convert distance to similarity score (1 - distance for cosine)
+			// sqlite-vec uses L2 distance by default, normalize to 0-1 score
+			const score = 1 / (1 + row.distance);
+
+			if (score >= minScore) {
+				const chunk = this.rowToChunk(row);
+				results.push({ chunk, score });
 			}
-			const taskChunk = chunk as TaskChunk;
-			return {
-				id: chunk.id,
-				type: "task" as const,
-				taskId: taskChunk.taskId,
-				field: taskChunk.field,
-				status: taskChunk.metadata.status,
-				priority: taskChunk.metadata.priority,
-				labels: taskChunk.metadata.labels,
-				content: chunk.content,
-				tokenCount: chunk.tokenCount,
-			};
-		});
-		await writeFile(paths.index, JSON.stringify(chunkMeta, null, 2));
+		}
 
-		// Save embeddings as binary
-		const embeddings = chunks
-			.filter((c): c is Chunk & { embedding: number[] } => Boolean(c.embedding))
-			.map((c) => ({
-				id: c.id,
-				embedding: c.embedding,
-			}));
-		await writeFile(paths.embeddings, JSON.stringify(embeddings));
+		return results.slice(0, limit);
 	}
 
 	/**
-	 * Load index from disk
+	 * Convert database row to Chunk object
 	 */
-	async load(): Promise<void> {
-		const paths = this.getPaths();
-
-		if (!this.indexExists()) {
-			throw new Error("Index does not exist");
-		}
-
-		// Check if rebuild needed
-		if (await this.needsRebuild()) {
-			throw new Error("Index needs rebuild - model changed");
-		}
-
-		// Initialize fresh database
-		await this.initDatabase();
-
-		// Load chunk metadata
-		const indexContent = await readFile(paths.index, "utf-8");
-		const chunkMeta: StoredChunkMeta[] = JSON.parse(indexContent);
-
-		// Load embeddings
-		const embeddingsContent = await readFile(paths.embeddings, "utf-8");
-		const embeddings: Array<{ id: string; embedding: number[] }> = JSON.parse(embeddingsContent);
-		const embeddingMap = new Map(embeddings.map((e) => [e.id, e.embedding]));
-
-		// Reconstruct chunks and add to database
-		let chunksWithEmbeddings = 0;
-		let chunksWithoutEmbeddings = 0;
-		const chunks: Chunk[] = chunkMeta.map((meta) => {
-			const embedding = embeddingMap.get(meta.id);
-			if (embedding) {
-				chunksWithEmbeddings++;
-			} else {
-				chunksWithoutEmbeddings++;
-			}
-
-			if (meta.type === "doc") {
-				return {
-					id: meta.id,
-					type: "doc",
-					docPath: meta.docPath || "",
-					section: meta.section || "",
-					content: meta.content,
-					tokenCount: meta.tokenCount,
-					embedding,
-					metadata: {
-						headingLevel: meta.headingLevel || 1,
-						parentSection: meta.parentSection,
-						position: meta.position || 0,
-					},
-				} as DocChunk;
-			}
-
+	private rowToChunk(row: {
+		id: string;
+		type: string;
+		content: string;
+		token_count: number;
+		doc_path: string | null;
+		section: string | null;
+		heading_level: number | null;
+		parent_section: string | null;
+		position: number | null;
+		task_id: string | null;
+		field: string | null;
+		status: string | null;
+		priority: string | null;
+		labels: string | null;
+	}): Chunk {
+		if (row.type === "doc") {
 			return {
-				id: meta.id,
-				type: "task",
-				taskId: meta.taskId || "",
-				field: (meta.field || "description") as TaskChunk["field"],
-				content: meta.content,
-				tokenCount: meta.tokenCount,
-				embedding,
+				id: row.id,
+				type: "doc",
+				docPath: row.doc_path || "",
+				section: row.section || "",
+				content: row.content,
+				tokenCount: row.token_count,
 				metadata: {
-					status: meta.status || "todo",
-					priority: meta.priority || "medium",
-					labels: meta.labels || [],
+					headingLevel: row.heading_level || 1,
+					parentSection: row.parent_section || undefined,
+					position: row.position || 0,
 				},
-			} as TaskChunk;
-		});
-
-		// Debug output
-		if (chunksWithoutEmbeddings > 0) {
-			console.warn(
-				`Warning: ${chunksWithoutEmbeddings} chunks missing embeddings, ${chunksWithEmbeddings} have embeddings`,
-			);
+			} as DocChunk;
 		}
 
-		await this.addChunks(chunks);
+		return {
+			id: row.id,
+			type: "task",
+			taskId: row.task_id || "",
+			field: (row.field || "description") as TaskChunk["field"],
+			content: row.content,
+			tokenCount: row.token_count,
+			metadata: {
+				status: row.status || "todo",
+				priority: row.priority || "medium",
+				labels: row.labels ? JSON.parse(row.labels) : [],
+			},
+		} as TaskChunk;
 	}
 
 	/**
-	 * Clear the index
+	 * Get all chunks (for keyword search fallback)
 	 */
-	async clear(): Promise<void> {
-		const paths = this.getPaths();
+	getAllChunks(type?: "doc" | "task"): Chunk[] {
+		let sql = "SELECT * FROM chunks";
+		if (type) {
+			sql += ` WHERE type = '${type}'`;
+		}
 
-		if (existsSync(paths.version)) await unlink(paths.version);
-		if (existsSync(paths.index)) await unlink(paths.index);
-		if (existsSync(paths.embeddings)) await unlink(paths.embeddings);
+		const rows = this.db.prepare(sql).all() as Array<{
+			id: string;
+			type: string;
+			content: string;
+			token_count: number;
+			doc_path: string | null;
+			section: string | null;
+			heading_level: number | null;
+			parent_section: string | null;
+			position: number | null;
+			task_id: string | null;
+			field: string | null;
+			status: string | null;
+			priority: string | null;
+			labels: string | null;
+		}>;
 
-		this.db = null;
+		return rows.map((row) => this.rowToChunk(row));
+	}
+
+	/**
+	 * Count chunks
+	 */
+	count(type?: "doc" | "task"): number {
+		let sql = "SELECT COUNT(*) as count FROM chunks";
+		if (type) {
+			sql += ` WHERE type = '${type}'`;
+		}
+		const result = this.db.prepare(sql).get() as { count: number };
+		return result.count;
 	}
 
 	/**
 	 * Count unique items (docs + tasks)
 	 */
-	private countUniqueItems(chunks: Chunk[]): number {
-		const docPaths = new Set<string>();
-		const taskIds = new Set<string>();
-
-		for (const chunk of chunks) {
-			if (chunk.type === "doc") {
-				docPaths.add((chunk as DocChunk).docPath);
-			} else {
-				taskIds.add((chunk as TaskChunk).taskId);
-			}
-		}
-
-		return docPaths.size + taskIds.size;
+	private countUniqueItems(): number {
+		const docCount = this.db
+			.prepare("SELECT COUNT(DISTINCT doc_path) as count FROM chunks WHERE type = 'doc'")
+			.get() as { count: number };
+		const taskCount = this.db
+			.prepare("SELECT COUNT(DISTINCT task_id) as count FROM chunks WHERE type = 'task'")
+			.get() as { count: number };
+		return docCount.count + taskCount.count;
 	}
 
 	/**
-	 * Get the Orama database instance (for direct queries)
+	 * Clear the index
 	 */
-	getDb(): OramaDB | null {
-		return this.db;
+	clear(): void {
+		this.db.exec("DELETE FROM chunks");
+		this.db.exec("DELETE FROM vec_chunks");
+		this.db.exec("DELETE FROM metadata");
+	}
+
+	/**
+	 * Close the database connection
+	 */
+	close(): void {
+		this.db.close();
+	}
+
+	/**
+	 * Get database path
+	 */
+	getDbPath(): string {
+		return this.dbPath;
 	}
 }
 
 /**
- * Create search index store
+ * Create SQLite search store
  */
-export function createSearchIndexStore(projectRoot: string, model?: EmbeddingModel): SearchIndexStore {
-	return new SearchIndexStore(projectRoot, model);
+export function createSearchStore(projectRoot: string, model?: EmbeddingModel): SearchStore {
+	return new SearchStore(projectRoot, model);
 }
