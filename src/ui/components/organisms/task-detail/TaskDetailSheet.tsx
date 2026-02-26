@@ -17,6 +17,7 @@ import { updateTask } from "../../../api/client";
 import { toast } from "../../ui/sonner";
 import { useCurrentUser } from "../../../contexts/UserContext";
 import { useUIPreferences } from "../../../contexts/UIPreferencesContext";
+import { useIsMobile } from "../../../hooks/use-mobile";
 import { TaskHeader } from "./TaskHeader";
 import { TaskDescription } from "./TaskDescription";
 import { TaskAcceptanceCriteria } from "./TaskAcceptanceCriteria";
@@ -48,6 +49,7 @@ export function TaskDetailSheet({
 	const { preferences, toggleTaskDetailLayout } = useUIPreferences();
 	const [saving, setSaving] = useState(false);
 	const isMaximized = preferences.taskDetailLayout === "maximized";
+	const isMobile = useIsMobile();
 	const contentRef = useRef<HTMLDivElement>(null);
 
 	// Animation variants
@@ -135,24 +137,27 @@ export function TaskDetailSheet({
 
 	// Header component (shared)
 	const Header = (
-		<div className="flex items-center justify-between gap-2 p-4 border-b bg-muted/50">
+		<div className="flex items-center justify-between gap-2 p-3 sm:p-4 border-b bg-muted/50">
 			<div className="flex-1 min-w-0">
 				<TaskHeader task={task} onSave={handleSave} saving={saving} />
 			</div>
 			<div className="flex items-center gap-1 shrink-0">
-				<Button
-					variant="ghost"
-					size="icon"
-					onClick={toggleTaskDetailLayout}
-					className="h-8 w-8 text-foreground hover:text-foreground"
-					title={isMaximized ? "Minimize" : "Maximize"}
-				>
-					{isMaximized ? (
-						<Minimize2 className="w-4 h-4" />
-					) : (
-						<Maximize2 className="w-4 h-4" />
-					)}
-				</Button>
+				{/* Hide maximize button on mobile - only sheet mode available */}
+				{!isMobile && (
+					<Button
+						variant="ghost"
+						size="icon"
+						onClick={toggleTaskDetailLayout}
+						className="h-8 w-8 text-foreground hover:text-foreground"
+						title={isMaximized ? "Minimize" : "Maximize"}
+					>
+						{isMaximized ? (
+							<Minimize2 className="w-4 h-4" />
+						) : (
+							<Maximize2 className="w-4 h-4" />
+						)}
+					</Button>
+				)}
 				<Button
 					variant="ghost"
 					size="icon"
@@ -168,7 +173,7 @@ export function TaskDetailSheet({
 
 	// Main content section (shared)
 	const MainContent = (
-		<div className="p-6 space-y-6">
+		<div className="p-3 sm:p-6 space-y-3 sm:space-y-6">
 			<TaskDescription task={task} onSave={handleSave} saving={saving} />
 			<TaskAcceptanceCriteria task={task} onSave={handleSave} saving={saving} />
 			<TaskImplementationSection
@@ -211,7 +216,8 @@ export function TaskDetailSheet({
 	);
 
 	// Centered Dialog mode (default) - Sidebar on RIGHT
-	if (isMaximized) {
+	// On mobile, always use Sheet mode (no center dialog)
+	if (isMaximized && !isMobile) {
 		return (
 			<AnimatePresence>
 				{task && (
@@ -272,7 +278,7 @@ export function TaskDetailSheet({
 							<div className="flex-1 flex flex-col overflow-hidden">
 								{/* Sidebar on top - compact mode */}
 								<div className="shrink-0 border-b bg-muted/20">
-									<div className="p-4">
+									<div className="p-3 sm:p-4">
 										<TaskSidebar
 											task={task}
 											allTasks={allTasks}

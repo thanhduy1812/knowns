@@ -80,13 +80,13 @@ export function TaskGroupedView({ tasks, onTaskClick, onNewTask }: TaskGroupedVi
 	return (
 		<div className="h-full flex flex-col">
 			{/* Toolbar */}
-			<div className="flex items-center justify-between gap-4 mb-4">
-				<div className="flex items-center gap-3 flex-wrap">
-					<Filter className="w-4 h-4 text-muted-foreground" />
+			<div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4 mb-4">
+				<div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+					<Filter className="w-4 h-4 text-muted-foreground hidden sm:block" />
 
 					{/* Status Filter */}
 					<Select value={statusFilter} onValueChange={setStatusFilter}>
-						<SelectTrigger className="w-[150px]">
+						<SelectTrigger className="w-[100px] sm:w-[130px]">
 							<SelectValue placeholder="Status" />
 						</SelectTrigger>
 						<SelectContent>
@@ -101,7 +101,7 @@ export function TaskGroupedView({ tasks, onTaskClick, onNewTask }: TaskGroupedVi
 
 					{/* Parent Filter */}
 					<Select value={parentFilter} onValueChange={setParentFilter}>
-						<SelectTrigger className="w-[200px]">
+						<SelectTrigger className="w-[130px] sm:w-[180px]">
 							<SelectValue placeholder="Parent" />
 						</SelectTrigger>
 						<SelectContent>
@@ -119,12 +119,12 @@ export function TaskGroupedView({ tasks, onTaskClick, onNewTask }: TaskGroupedVi
 						</SelectContent>
 					</Select>
 
-					<span className="text-muted-foreground text-sm">
+					<span className="text-muted-foreground text-xs sm:text-sm">
 						{filteredTasks.length} {filteredTasks.length === 1 ? "task" : "tasks"}
 					</span>
 				</div>
 
-				<Button onClick={onNewTask} className="bg-green-700 hover:bg-green-800 text-white">
+				<Button onClick={onNewTask} className="bg-green-700 hover:bg-green-800 text-white shrink-0 w-full sm:w-auto">
 					<Plus className="mr-2 h-4 w-4" />
 					New Task
 				</Button>
@@ -149,7 +149,7 @@ export function TaskGroupedView({ tasks, onTaskClick, onNewTask }: TaskGroupedVi
 										return (
 											<div
 												key={task.id}
-												className="bg-card rounded-lg p-4 border transition-colors hover:bg-accent/50"
+												className="bg-card rounded-lg p-3 sm:p-4 border transition-colors hover:bg-accent/50"
 											>
 												<div className="flex items-start gap-3">
 													{/* Task Info */}

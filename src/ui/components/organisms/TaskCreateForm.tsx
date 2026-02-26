@@ -40,6 +40,7 @@ import {
 import { cn } from "@/ui/lib/utils";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { buildStatusOptions, getStatusBadgeClasses, type ColorName } from "../../utils/colors";
+import { useIsMobile } from "../../hooks/use-mobile";
 
 interface TaskCreateFormProps {
 	isOpen: boolean;
@@ -105,6 +106,7 @@ export default function TaskCreateForm({
 	// Layout preference from context
 	const { preferences, toggleTaskCreateLayout } = useUIPreferences();
 	const isMaximized = preferences.taskCreateLayout === "maximized";
+	const isMobile = useIsMobile();
 
 	const newACInputRef = useRef<HTMLInputElement>(null);
 
@@ -241,7 +243,7 @@ export default function TaskCreateForm({
 
 	// Header component (shared)
 	const Header = (
-		<div className="flex items-center justify-between gap-2 p-4 border-b bg-green-700">
+		<div className="flex items-center justify-between gap-2 p-3 sm:p-4 border-b bg-green-700">
 			<div className="flex-1 min-w-0">
 				<span className="text-green-100 text-xs font-medium uppercase tracking-wide">New Task</span>
 				<input
@@ -255,19 +257,22 @@ export default function TaskCreateForm({
 				/>
 			</div>
 			<div className="flex items-center gap-1 shrink-0">
-				<Button
-					variant="ghost"
-					size="icon"
-					onClick={toggleTaskCreateLayout}
-					className="h-8 w-8 text-foreground hover:text-foreground"
-					title={isMaximized ? "Minimize" : "Maximize"}
-				>
-					{isMaximized ? (
-						<Minimize2 className="w-4 h-4" />
-					) : (
-						<Maximize2 className="w-4 h-4" />
-					)}
-				</Button>
+				{/* Hide maximize button on mobile - only sheet mode available */}
+				{!isMobile && (
+					<Button
+						variant="ghost"
+						size="icon"
+						onClick={toggleTaskCreateLayout}
+						className="h-8 w-8 text-foreground hover:text-foreground"
+						title={isMaximized ? "Minimize" : "Maximize"}
+					>
+						{isMaximized ? (
+							<Minimize2 className="w-4 h-4" />
+						) : (
+							<Maximize2 className="w-4 h-4" />
+						)}
+					</Button>
+				)}
 				<Button
 					variant="ghost"
 					size="icon"
@@ -283,7 +288,7 @@ export default function TaskCreateForm({
 
 	// Notifications component (shared)
 	const Notifications = (success || error) && (
-		<div className="px-4 pt-4">
+		<div className="px-3 sm:px-4 pt-3 sm:pt-4">
 			{success && (
 				<div className="bg-green-50 dark:bg-green-900/50 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 px-4 py-2 rounded-lg text-sm">
 					Task created successfully!
@@ -299,7 +304,7 @@ export default function TaskCreateForm({
 
 	// Main content section (shared)
 	const MainContent = (
-		<div className="p-6 space-y-6">
+		<div className="p-3 sm:p-6 space-y-3 sm:space-y-6">
 			{/* Description */}
 			<section>
 				<div className="flex items-center gap-2 mb-3">
@@ -658,7 +663,7 @@ export default function TaskCreateForm({
 
 	// Footer component (shared)
 	const Footer = (
-		<div className="border-t px-6 py-4 bg-muted/30 flex justify-end gap-3">
+		<div className="border-t px-3 sm:px-6 py-3 sm:py-4 bg-muted/30 flex justify-end gap-2 sm:gap-3">
 			<Button
 				type="button"
 				variant="ghost"
@@ -679,7 +684,8 @@ export default function TaskCreateForm({
 	);
 
 	// Centered Dialog mode (default) - Sidebar on RIGHT
-	if (isMaximized) {
+	// On mobile, always use Sheet mode (no center dialog)
+	if (isMaximized && !isMobile) {
 		return (
 			<AnimatePresence>
 				{isOpen && (
@@ -743,9 +749,9 @@ export default function TaskCreateForm({
 							<div className="flex-1 flex flex-col overflow-hidden">
 								{/* Sidebar on top - compact layout */}
 								<div className="shrink-0 border-b bg-muted/20">
-									<div className="p-4 space-y-3">
+									<div className="p-3 sm:p-4 space-y-3">
 										{/* Row 1: Status, Priority, Assignee */}
-										<div className="grid grid-cols-3 gap-3">
+										<div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
 											<div className="space-y-1">
 												<Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 													Status

@@ -47,43 +47,43 @@ export default function TasksPage({
 
 	if (loading) {
 		return (
-			<div className="p-6 flex items-center justify-center h-64">
+			<div className="p-3 sm:p-6 flex items-center justify-center h-64">
 				<div className="text-lg text-muted-foreground">Loading tasks...</div>
 			</div>
 		);
 	}
 
 	return (
-		<div className="p-6 h-full flex flex-col overflow-hidden">
+		<div className="p-3 sm:p-6 h-full flex flex-col overflow-hidden">
 			{/* Header */}
-			<div className="mb-6 flex items-center justify-between gap-4">
-				<div className="flex items-center gap-4">
-					<h1 className="text-2xl font-bold">All Tasks</h1>
-					<span className="text-muted-foreground">
+			<div className="mb-4 sm:mb-6 flex items-center justify-between gap-2 sm:gap-4">
+				<div className="flex items-center gap-2 sm:gap-4 min-w-0">
+					<h1 className="text-xl sm:text-2xl font-bold truncate">All Tasks</h1>
+					<span className="text-muted-foreground text-sm sm:text-base shrink-0">
 						{tasks.length} {tasks.length === 1 ? "task" : "tasks"}
 					</span>
 				</div>
 
 				{/* View Toggle */}
-				<div className="flex items-center gap-2">
-					<div className="flex items-center border rounded-lg p-1">
+				<div className="flex items-center shrink-0">
+					<div className="flex items-center border rounded-lg p-0.5 sm:p-1">
 						<Button
 							variant={viewMode === "table" ? "secondary" : "ghost"}
 							size="sm"
 							onClick={() => setViewMode("table")}
-							className="h-8 px-3"
+							className="h-7 sm:h-8 px-2 sm:px-3"
 						>
-							<LayoutList className="h-4 w-4 mr-2" />
-							Table
+							<LayoutList className="h-4 w-4 sm:mr-2" />
+							<span className="hidden sm:inline">Table</span>
 						</Button>
 						<Button
 							variant={viewMode === "grouped" ? "secondary" : "ghost"}
 							size="sm"
 							onClick={() => setViewMode("grouped")}
-							className="h-8 px-3"
+							className="h-7 sm:h-8 px-2 sm:px-3"
 						>
-							<LayoutGrid className="h-4 w-4 mr-2" />
-							Grouped
+							<LayoutGrid className="h-4 w-4 sm:mr-2" />
+							<span className="hidden sm:inline">Grouped</span>
 						</Button>
 					</div>
 				</div>
@@ -113,7 +113,7 @@ export default function TasksPage({
 
 			{/* Bulk Actions Bar */}
 			{selectedTasks.length > 0 && (
-				<div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-4 py-2 rounded-lg shadow-lg flex items-center gap-4">
+				<div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-3 sm:px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 sm:gap-4 max-w-[90vw]">
 					<span className="text-sm font-medium">
 						{selectedTasks.length} task{selectedTasks.length > 1 ? "s" : ""} selected
 					</span>

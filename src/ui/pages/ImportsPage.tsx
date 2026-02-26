@@ -16,6 +16,9 @@ import {
 	Clock,
 	FileText,
 	Download,
+	PanelLeftClose,
+	PanelLeft,
+	Menu,
 } from "lucide-react";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Button } from "../components/ui/button";
@@ -23,6 +26,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
 import { TreeView, type TreeDataItem } from "../components/ui/tree-view";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
 import { importApi, type Import, type ImportDetail, type ImportResult } from "../api/client";
 import { useSSEEvent } from "../contexts/SSEContext";
 import { toast } from "../components/ui/sonner";
@@ -196,6 +200,30 @@ export default function ImportsPage() {
 	const [removing, setRemoving] = useState<string | null>(null);
 	const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
 	const [removeDeleteFiles, setRemoveDeleteFiles] = useState(false);
+
+	// Sidebar state
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+		const saved = localStorage.getItem("imports-sidebar-collapsed");
+		return saved === "true";
+	});
+	const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+	// Persist sidebar state
+	useEffect(() => {
+		localStorage.setItem("imports-sidebar-collapsed", String(sidebarCollapsed));
+	}, [sidebarCollapsed]);
+
+	// Keyboard shortcut: Ctrl+B to toggle sidebar
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+				e.preventDefault();
+				setSidebarCollapsed((prev) => !prev);
+			}
+		};
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, []);
 
 	// Load imports
 	const loadImports = useCallback(async () => {
@@ -371,20 +399,32 @@ export default function ImportsPage() {
 	}
 
 	return (
-		<div className="p-6 h-full flex flex-col overflow-hidden">
+		<div className="p-3 sm:p-6 h-full flex flex-col overflow-hidden">
 			{/* Header */}
-			<div className="mb-6 flex items-center justify-between">
-				<div>
-					<h1 className="text-2xl font-bold">Imports</h1>
-					<p className="text-sm text-muted-foreground mt-1">
-						Import templates and docs from external sources
-					</p>
+			<div className="mb-4 sm:mb-6 flex items-center justify-between gap-2 sm:gap-4">
+				<div className="flex items-center gap-2 sm:gap-3 min-w-0">
+					{/* Mobile menu button */}
+					<Button
+						variant="outline"
+						size="sm"
+						className="lg:hidden shrink-0"
+						onClick={() => setMobileDrawerOpen(true)}
+					>
+						<Menu className="w-4 h-4" />
+					</Button>
+					<div className="min-w-0">
+						<h1 className="text-xl sm:text-2xl font-bold truncate">Imports</h1>
+						<p className="text-sm text-muted-foreground mt-1 hidden sm:block">
+							Import templates and docs from external sources
+						</p>
+					</div>
 				</div>
-				<div className="flex gap-2">
+				<div className="flex gap-2 shrink-0">
 					<Button
 						variant="outline"
 						onClick={handleSyncAll}
 						disabled={syncingAll || imports.length === 0}
+						className="hidden sm:flex"
 					>
 						{syncingAll ? (
 							<Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -397,18 +437,44 @@ export default function ImportsPage() {
 						onClick={() => setShowAddModal(true)}
 						className="bg-green-700 hover:bg-green-800 text-white"
 					>
-						<Plus className="w-4 h-4 mr-2" />
-						Add Import
+						<Plus className="w-4 h-4 sm:mr-2" />
+						<span className="hidden sm:inline">Add Import</span>
 					</Button>
 				</div>
 			</div>
 
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0 overflow-hidden">
+			<div className="flex gap-3 sm:gap-6 flex-1 min-h-0 overflow-hidden">
+				{/* Sidebar Toggle Button (when collapsed) */}
+				{sidebarCollapsed && (
+					<div className="shrink-0 hidden lg:block">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setSidebarCollapsed(false)}
+							title="Show sidebar"
+						>
+							<PanelLeft className="w-4 h-4" />
+						</Button>
+					</div>
+				)}
+
 				{/* Import List */}
-				<div className="lg:col-span-1 flex flex-col min-h-0 overflow-hidden">
+				<div
+					className={`flex-col min-h-0 overflow-hidden transition-all duration-300 hidden lg:flex ${
+						sidebarCollapsed ? "w-0 opacity-0 pointer-events-none -ml-6" : "w-80 shrink-0"
+					}`}
+				>
 					<div className="bg-card rounded-lg border overflow-hidden flex flex-col flex-1 min-h-0">
-						<div className="p-4 border-b shrink-0">
-							<h2 className="font-semibold">Configured Imports ({imports.length})</h2>
+						<div className="p-3 border-b shrink-0 flex items-center justify-between">
+							<h2 className="font-semibold text-sm">Imports</h2>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => setSidebarCollapsed(true)}
+								title="Collapse sidebar"
+							>
+								<PanelLeftClose className="w-4 h-4" />
+							</Button>
 						</div>
 						<ScrollArea className="flex-1">
 							{imports.map((imp) => (
@@ -461,7 +527,7 @@ export default function ImportsPage() {
 				</div>
 
 				{/* Import Detail */}
-				<div className="lg:col-span-2 flex flex-col min-h-0 overflow-hidden">
+				<div className="flex-1 flex flex-col min-h-0 overflow-hidden">
 					{loadingDetail ? (
 						<div className="bg-card rounded-lg border p-12 text-center">
 							<Loader2 className="w-8 h-8 mx-auto animate-spin text-muted-foreground" />
@@ -652,6 +718,53 @@ export default function ImportsPage() {
 					)}
 				</div>
 			</div>
+
+			{/* Mobile Drawer */}
+			<Sheet open={mobileDrawerOpen} onOpenChange={setMobileDrawerOpen}>
+				<SheetContent side="left" className="w-[85vw] max-w-80 p-0">
+					<SheetHeader className="p-4 border-b">
+						<SheetTitle>Imports</SheetTitle>
+					</SheetHeader>
+					<ScrollArea className="h-[calc(100vh-80px)]">
+						{imports.map((imp) => (
+							<button
+								key={imp.name}
+								type="button"
+								onClick={() => {
+									loadImportDetail(imp.name);
+									setMobileDrawerOpen(false);
+								}}
+								className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-accent text-foreground transition-colors border-b ${
+									selectedName === imp.name ? "bg-accent" : ""
+								}`}
+							>
+								<ImportTypeIcon type={imp.type} />
+								<div className="flex-1 min-w-0">
+									<div className="font-medium truncate flex items-center gap-2">
+										{imp.name}
+										{imp.link && (
+											<Link className="w-3 h-3 text-muted-foreground" />
+										)}
+									</div>
+									<div className="text-sm text-muted-foreground truncate">
+										{imp.source}
+									</div>
+									<div className="text-xs text-muted-foreground mt-1">
+										{imp.fileCount} files • Synced {formatDate(imp.lastSync)}
+									</div>
+								</div>
+								<ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+							</button>
+						))}
+						{imports.length === 0 && (
+							<div className="p-8 text-center">
+								<Download className="w-12 h-12 mx-auto text-muted-foreground" />
+								<p className="mt-2 font-medium">No imports yet</p>
+							</div>
+						)}
+					</ScrollArea>
+				</SheetContent>
+			</Sheet>
 
 			{/* Add Import Modal */}
 			{showAddModal && (

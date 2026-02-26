@@ -204,16 +204,16 @@ export default function DashboardPage({ tasks, loading }: DashboardPageProps) {
 	};
 
 	return (
-		<div className="p-6 h-full overflow-auto">
-			<div className="mb-6">
-				<h1 className="text-2xl font-bold">Dashboard</h1>
+		<div className="p-3 sm:p-6 h-full overflow-auto">
+			<div className="mb-4 sm:mb-6">
+				<h1 className="text-xl sm:text-2xl font-bold">Dashboard</h1>
 				<p className="text-muted-foreground text-sm">Overview of your project</p>
 			</div>
 
 			{/* Top Row - Summary Widgets */}
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 mb-4 sm:mb-6">
 				{/* Tasks Widget */}
-				<div className="bg-card rounded-xl border p-6 shadow-sm">
+				<div className="bg-card rounded-xl border p-3 sm:p-6 shadow-sm">
 					<div className="flex items-center justify-between mb-4">
 						<div className="flex items-center gap-3">
 							<div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
@@ -285,7 +285,7 @@ export default function DashboardPage({ tasks, loading }: DashboardPageProps) {
 				</div>
 
 				{/* Docs Widget */}
-				<div className="bg-card rounded-xl border p-6 shadow-sm">
+				<div className="bg-card rounded-xl border p-3 sm:p-6 shadow-sm">
 					<div className="flex items-center justify-between mb-4">
 						<div className="flex items-center gap-3">
 							<div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
@@ -332,7 +332,7 @@ export default function DashboardPage({ tasks, loading }: DashboardPageProps) {
 				</div>
 
 				{/* SDD Widget */}
-				<div className="bg-card rounded-xl border p-6 shadow-sm">
+				<div className="bg-card rounded-xl border p-3 sm:p-6 shadow-sm">
 					<div className="flex items-center justify-between mb-4">
 						<div className="flex items-center gap-3">
 							<div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
@@ -450,9 +450,9 @@ export default function DashboardPage({ tasks, loading }: DashboardPageProps) {
 			</div>
 
 			{/* Second Row - Time Tracking & Recent Activity */}
-			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+			<div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6 mb-4 sm:mb-6">
 				{/* Time Tracking Summary */}
-				<div className="bg-card rounded-xl border p-6 shadow-sm">
+				<div className="bg-card rounded-xl border p-3 sm:p-6 shadow-sm">
 					<div className="flex items-center gap-3 mb-4">
 						<div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/30">
 							<Timer className="w-5 h-5 text-orange-600 dark:text-orange-400" />
@@ -492,7 +492,7 @@ export default function DashboardPage({ tasks, loading }: DashboardPageProps) {
 				</div>
 
 				{/* Recent Activity */}
-				<div className="bg-card rounded-xl border p-6 shadow-sm">
+				<div className="bg-card rounded-xl border p-3 sm:p-6 shadow-sm">
 					<div className="flex items-center gap-3 mb-4">
 						<div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/30">
 							<Activity className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
@@ -538,9 +538,9 @@ export default function DashboardPage({ tasks, loading }: DashboardPageProps) {
 			</div>
 
 			{/* Third Row - Recent Tasks & Spec Progress */}
-			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+			<div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6">
 				{/* Recent Tasks */}
-				<div className="bg-card rounded-xl border p-6 shadow-sm">
+				<div className="bg-card rounded-xl border p-3 sm:p-6 shadow-sm">
 					<div className="flex items-center justify-between mb-4">
 						<div className="flex items-center gap-3">
 							<div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/30">
@@ -600,7 +600,7 @@ export default function DashboardPage({ tasks, loading }: DashboardPageProps) {
 				</div>
 
 				{/* Spec Progress Cards */}
-				<div className="bg-card rounded-xl border p-6 shadow-sm">
+				<div className="bg-card rounded-xl border p-3 sm:p-6 shadow-sm">
 					<div className="flex items-center justify-between mb-4">
 						<div className="flex items-center gap-3">
 							<div className="p-2 rounded-lg bg-pink-100 dark:bg-pink-900/30">

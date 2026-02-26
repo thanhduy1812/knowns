@@ -1,7 +1,7 @@
 ---
 title: Reference System Guide
 createdAt: '2026-02-24T08:45:16.192Z'
-updatedAt: '2026-02-24T08:49:58.247Z'
+updatedAt: '2026-02-26T08:46:36.162Z'
 description: How to use @doc/ and @task- references for linking
 tags:
   - guide
@@ -16,10 +16,10 @@ Link tasks and docs using references. Full docs: `./docs/reference-system.md`
 
 ```mermaid
 graph LR
-    A[Task] -->|@doc/path| B[Doc]
-    A -->|@task-id| C[Other Task]
-    B -->|@doc/path| D[Other Doc]
-    B -->|@task-id| A
+    A[Task] -->|"@doc/path"| B[Doc]
+    A -->|"@task-id"| C[Other Task]
+    B -->|"@doc/path"| D[Other Doc]
+    B -->|"@task-id"| A
 ```
 
 ## Reference Formats

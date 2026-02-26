@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, lazy, Suspense } from "react";
 import type { Task } from "../models/task";
 import { api } from "./api/client";
 import { SSEProvider, useSSEEvent } from "./contexts/SSEContext";
@@ -13,13 +13,28 @@ import { UserProvider } from "./contexts/UserContext";
 import { UIPreferencesProvider } from "./contexts/UIPreferencesContext";
 import { TimeTrackerProvider } from "./contexts/TimeTrackerContext";
 import { GlobalTaskProvider, useGlobalTask } from "./contexts/GlobalTaskContext";
-import ConfigPage from "./pages/ConfigPage";
-import DashboardPage from "./pages/DashboardPage";
-import DocsPage from "./pages/DocsPage";
-import ImportsPage from "./pages/ImportsPage";
-import KanbanPage from "./pages/KanbanPage";
-import TasksPage from "./pages/TasksPage";
-import TemplatesPage from "./pages/TemplatesPage";
+import { Loader2 } from "lucide-react";
+
+// Lazy load page components for better performance
+const ConfigPage = lazy(() => import("./pages/ConfigPage"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const DocsPage = lazy(() => import("./pages/DocsPage"));
+const ImportsPage = lazy(() => import("./pages/ImportsPage"));
+const KanbanPage = lazy(() => import("./pages/KanbanPage"));
+const TasksPage = lazy(() => import("./pages/TasksPage"));
+const TemplatesPage = lazy(() => import("./pages/TemplatesPage"));
+
+// Page loading fallback
+function PageLoading() {
+	return (
+		<div className="flex-1 flex items-center justify-center">
+			<div className="flex items-center gap-2 text-muted-foreground">
+				<Loader2 className="w-5 h-5 animate-spin" />
+				<span>Loading...</span>
+			</div>
+		</div>
+	);
+}
 
 // Dark mode context
 interface ThemeContextType {
@@ -295,12 +310,12 @@ function AppContent() {
 				/>
 				<main className="flex flex-1 flex-col bg-background overflow-hidden">
 					{/* Header with Trigger */}
-					<header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+					<header className="flex h-12 shrink-0 items-center gap-1.5 sm:gap-2 border-b px-2 sm:px-4">
 						<SidebarTrigger className="-ml-1" />
-						<Separator orientation="vertical" className="mr-2 h-4" />
+						<Separator orientation="vertical" className="mr-1 sm:mr-2 h-4" />
 						<ConnectionStatus />
-						<div className="flex flex-1 items-center gap-2 text-sm">
-							<span className="font-semibold text-foreground">
+						<div className="flex flex-1 items-center gap-2 text-sm min-w-0">
+							<span className="font-semibold text-foreground truncate">
 								{config.name || "Knowns"}
 							</span>
 						</div>
@@ -314,7 +329,11 @@ function AppContent() {
 					</header>
 
 					{/* Page Content */}
-					<div className="flex-1 w-full overflow-y-auto overflow-x-hidden">{renderPage()}</div>
+					<div className="flex-1 w-full overflow-y-auto overflow-x-hidden">
+						<Suspense fallback={<PageLoading />}>
+							{renderPage()}
+						</Suspense>
+					</div>
 				</main>
 
 				{/* Task Create Form Modal */}

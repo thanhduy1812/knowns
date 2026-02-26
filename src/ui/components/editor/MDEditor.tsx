@@ -1,6 +1,28 @@
-import { forwardRef, useImperativeHandle, useCallback } from "react";
-import MDEditor from "@uiw/react-md-editor";
+import { forwardRef, useImperativeHandle, useCallback, useMemo } from "react";
+import MdEditor from "react-markdown-editor-lite";
+import "react-markdown-editor-lite/lib/index.css";
+import { marked } from "marked";
+import hljs from "highlight.js";
 import { useTheme } from "../../App";
+
+// Configure marked to use highlight.js
+marked.setOptions({
+	highlight: (code: string, lang: string) => {
+		if (lang && hljs.getLanguage(lang)) {
+			try {
+				return hljs.highlight(code, { language: lang }).value;
+			} catch {
+				// Fall through to auto-detection
+			}
+		}
+		// Auto-detect language
+		try {
+			return hljs.highlightAuto(code).value;
+		} catch {
+			return code;
+		}
+	},
+});
 
 interface MDEditorComponentProps {
 	markdown: string;
@@ -33,9 +55,14 @@ const MDEditorComponent = forwardRef<MDEditorRef, MDEditorComponentProps>(
 	) => {
 		const { isDark } = useTheme();
 
-		const handleChange = useCallback(
-			(value?: string) => {
-				onChange(value || "");
+		// Markdown renderer using marked
+		const renderHTML = useCallback((text: string) => {
+			return marked.parse(text, { async: false }) as string;
+		}, []);
+
+		const handleEditorChange = useCallback(
+			({ text }: { text: string }) => {
+				onChange(text);
 			},
 			[onChange],
 		);
@@ -52,24 +79,39 @@ const MDEditorComponent = forwardRef<MDEditorRef, MDEditorComponentProps>(
 			[markdown, onChange],
 		);
 
-		// Determine preview mode
-		const preview = previewMode ?? (readOnly ? "preview" : "edit");
+		// Map preview mode to react-markdown-editor-lite view
+		// "edit" = editor only, "live" = split, "preview" = preview only
+		const view = useMemo(() => {
+			if (readOnly || previewMode === "preview") {
+				return { menu: false, md: false, html: true };
+			}
+			if (previewMode === "live") {
+				return { menu: true, md: true, html: true };
+			}
+			// Default: edit only (no preview)
+			return { menu: true, md: true, html: false };
+		}, [readOnly, previewMode]);
+
+		// Handle height - support both pixel values and percentage/full height
+		const isFullHeight = height === "100%" || height === "full";
+		const editorStyle = isFullHeight
+			? { height: "100%" }
+			: { height: typeof height === "number" ? height : 400 };
 
 		return (
 			<div
-				className={`md-editor-wrapper ${className}`}
+				className={`md-editor-lite-wrapper ${className} ${isDark ? "dark-mode" : ""} ${isFullHeight ? "h-full" : ""}`}
 				data-color-mode={isDark ? "dark" : "light"}
 			>
-				<MDEditor
+				<MdEditor
 					value={markdown}
-					onChange={handleChange}
-					preview={preview}
-					hideToolbar={readOnly}
-					textareaProps={{
-						placeholder,
-					}}
-					height={typeof height === "number" ? height : "100%"}
-					visibleDragbar={!readOnly}
+					onChange={handleEditorChange}
+					renderHTML={renderHTML}
+					placeholder={placeholder}
+					readOnly={readOnly}
+					view={view}
+					canView={{ menu: !readOnly, md: true, html: false, both: false, fullScreen: true, hideMenu: false }}
+					style={editorStyle}
 				/>
 			</div>
 		);

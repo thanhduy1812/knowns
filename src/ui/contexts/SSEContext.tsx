@@ -70,6 +70,9 @@ function parseTaskDTO(dto: Record<string, unknown>): Task {
 	} as Task;
 }
 
+// Threshold for showing reload confirmation (30 seconds)
+const LONG_DISCONNECT_THRESHOLD_MS = 30 * 1000;
+
 export function SSEProvider({ children }: { children: ReactNode }) {
 	const [isConnected, setIsConnected] = useState(false);
 	const eventSourceRef = useRef<EventSource | null>(null);
@@ -78,6 +81,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 	const wasConnectedRef = useRef(false);
 	// Track disconnect toast ID so we can dismiss it on reconnect
 	const disconnectToastIdRef = useRef<string | number | null>(null);
+	// Track when disconnect started
+	const disconnectStartTimeRef = useRef<number | null>(null);
 
 	// Subscribe to an event type
 	const subscribe = useCallback(<T extends SSEEventType>(
@@ -125,26 +130,60 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 				// Trigger refresh events so components can refetch data they may have missed
 				if (wasConnectedRef.current) {
 					console.log("[SSE] Reconnected - triggering data refresh");
-					// Dismiss disconnect toast and show success toast
+
+					// Calculate disconnect duration
+					const disconnectDuration = disconnectStartTimeRef.current
+						? Date.now() - disconnectStartTimeRef.current
+						: 0;
+					disconnectStartTimeRef.current = null;
+
+					// Dismiss disconnect toast
 					if (disconnectToastIdRef.current) {
 						toast.dismiss(disconnectToastIdRef.current);
 						disconnectToastIdRef.current = null;
 					}
-					toast("Back online", {
-						description: "Connection restored",
-						duration: 2000,
-						position: "top-center",
-						className: "bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800",
-						icon: (
-							<svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-								<path d="M12 20h.01" />
-								<path d="M2 8.82a15 15 0 0 1 20 0" />
-								<path d="M5 12.859a10 10 0 0 1 14 0" />
-								<path d="M8.5 16.429a5 5 0 0 1 7 0" />
-							</svg>
-						),
-					});
-					// Small delay to ensure connection is stable
+
+					// If disconnected for too long, ask user if they want to reload
+					if (disconnectDuration > LONG_DISCONNECT_THRESHOLD_MS) {
+						const durationSecs = Math.round(disconnectDuration / 1000);
+						toast("Back online", {
+							description: `You were offline for ${durationSecs}s. Reload to ensure all data is up to date?`,
+							duration: 10000,
+							position: "top-center",
+							className: "bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800",
+							action: {
+								label: "Reload",
+								onClick: () => {
+									window.location.reload();
+								},
+							},
+							icon: (
+								<svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+									<path d="M12 20h.01" />
+									<path d="M2 8.82a15 15 0 0 1 20 0" />
+									<path d="M5 12.859a10 10 0 0 1 14 0" />
+									<path d="M8.5 16.429a5 5 0 0 1 7 0" />
+								</svg>
+							),
+						});
+					} else {
+						toast("Back online", {
+							description: "Connection restored",
+							duration: 2000,
+							position: "top-center",
+							className: "bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800",
+							icon: (
+								<svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+									<path d="M12 20h.01" />
+									<path d="M2 8.82a15 15 0 0 1 20 0" />
+									<path d="M5 12.859a10 10 0 0 1 14 0" />
+									<path d="M8.5 16.429a5 5 0 0 1 7 0" />
+								</svg>
+							),
+						});
+					}
+
+					// Always do soft refresh (refetch data)
 					setTimeout(() => {
 						emit("tasks:refresh", {});
 						emit("time:refresh", {});
@@ -157,6 +196,11 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 			eventSource.onerror = () => {
 				setIsConnected(false);
 				console.log("[SSE] Connection lost - will auto-reconnect");
+
+				// Track when disconnect started (only set once per disconnect)
+				if (disconnectStartTimeRef.current === null) {
+					disconnectStartTimeRef.current = Date.now();
+				}
 
 				// Show disconnect toast only once (when we have been connected before)
 				// wasConnectedRef tracks if we've ever connected, preventing toast on initial failure

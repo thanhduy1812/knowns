@@ -46,7 +46,7 @@ export default function SDDWidget() {
 
 	if (loading && !data) {
 		return (
-			<div className="bg-card rounded-lg border p-4 mb-4">
+			<div className="bg-card rounded-lg border p-3 sm:p-4 mb-3 sm:mb-4">
 				<div className="flex items-center gap-2 text-muted-foreground">
 					<RefreshCw className="w-4 h-4 animate-spin" />
 					<span className="text-sm">Loading SDD stats...</span>
@@ -57,7 +57,7 @@ export default function SDDWidget() {
 
 	if (error && !data) {
 		return (
-			<div className="bg-card rounded-lg border p-4 mb-4">
+			<div className="bg-card rounded-lg border p-3 sm:p-4 mb-3 sm:mb-4">
 				<div className="flex items-center justify-between">
 					<span className="text-sm text-destructive">{error}</span>
 					<Button variant="ghost" size="sm" onClick={loadStats}>
@@ -77,7 +77,7 @@ export default function SDDWidget() {
 	if (!hasSpecs) return null;
 
 	return (
-		<div className="bg-card rounded-lg border p-4 mb-4">
+		<div className="bg-card rounded-lg border p-3 sm:p-4 mb-3 sm:mb-4">
 			{/* Header */}
 			<div className="flex items-center justify-between mb-3">
 				<div className="flex items-center gap-2">

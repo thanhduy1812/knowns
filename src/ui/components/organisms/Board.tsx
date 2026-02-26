@@ -306,8 +306,8 @@ export default function Board({ tasks, loading, onTasksUpdate }: BoardProps) {
 				</Collapsible>
 			) : (
 				// Desktop: Always visible controls
-				<div className="shrink-0 bg-card rounded-lg p-4 mb-4 border border-border">
-					<div className="flex items-center gap-4 flex-wrap">
+				<div className="shrink-0 bg-card rounded-lg p-3 sm:p-4 mb-3 sm:mb-4 border border-border">
+					<div className="flex items-center gap-2 sm:gap-4 flex-wrap">
 						<span className="text-sm font-medium text-muted-foreground">Show Columns:</span>
 						{availableStatuses.map((column) => {
 							const isVisible = visibleColumns.has(column);

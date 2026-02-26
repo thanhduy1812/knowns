@@ -48,9 +48,9 @@ function TaskDataTableToolbar({
 	const isFiltered = globalFilter || statusFilter !== "all" || priorityFilter !== "all" || specFilter !== "all";
 
 	return (
-		<div className="flex items-center justify-between gap-4">
-			<div className="flex flex-1 items-center space-x-2">
-				<div className="relative w-[250px]">
+		<div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
+			<div className="flex flex-1 items-center flex-wrap gap-2">
+				<div className="relative flex-1 min-w-[150px] sm:min-w-[200px] sm:max-w-[250px]">
 					<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
 					<Input
 						placeholder="Search tasks..."
@@ -60,7 +60,7 @@ function TaskDataTableToolbar({
 					/>
 				</div>
 				<Select value={statusFilter} onValueChange={setStatusFilter}>
-					<SelectTrigger className="w-[150px]">
+					<SelectTrigger className="w-[100px] sm:w-[130px]">
 						<SelectValue placeholder="Status" />
 					</SelectTrigger>
 					<SelectContent>
@@ -73,7 +73,7 @@ function TaskDataTableToolbar({
 					</SelectContent>
 				</Select>
 				<Select value={priorityFilter} onValueChange={setPriorityFilter}>
-					<SelectTrigger className="w-[150px]">
+					<SelectTrigger className="w-[100px] sm:w-[130px]">
 						<SelectValue placeholder="Priority" />
 					</SelectTrigger>
 					<SelectContent>
@@ -85,7 +85,7 @@ function TaskDataTableToolbar({
 				</Select>
 				{availableSpecs.length > 0 && (
 					<Select value={specFilter} onValueChange={setSpecFilter}>
-						<SelectTrigger className="w-[150px]">
+						<SelectTrigger className="w-[100px] sm:w-[130px]">
 							<SelectValue placeholder="Spec" />
 						</SelectTrigger>
 						<SelectContent>
@@ -116,7 +116,7 @@ function TaskDataTableToolbar({
 				)}
 			</div>
 			{onNewTask && (
-				<Button onClick={onNewTask} className="bg-green-700 hover:bg-green-800 text-white">
+				<Button onClick={onNewTask} className="bg-green-700 hover:bg-green-800 text-white shrink-0 w-full sm:w-auto">
 					<Plus className="mr-2 h-4 w-4" />
 					New Task
 				</Button>

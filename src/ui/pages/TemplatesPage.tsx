@@ -16,6 +16,9 @@ import {
 	FolderOpen,
 	Folder,
 	Loader2,
+	PanelLeftClose,
+	PanelLeft,
+	Menu,
 } from "lucide-react";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Button } from "../components/ui/button";
@@ -23,6 +26,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
 import { TreeView, type TreeDataItem } from "../components/ui/tree-view";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
 import {
 	templateApi,
 	type TemplateListItem,
@@ -128,6 +132,28 @@ export default function TemplatesPage() {
 	const [creating, setCreating] = useState(false);
 
 	const [pathCopied, setPathCopied] = useState(false);
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+		const saved = localStorage.getItem("templates-sidebar-collapsed");
+		return saved === "true";
+	});
+	const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+	// Persist sidebar state
+	useEffect(() => {
+		localStorage.setItem("templates-sidebar-collapsed", String(sidebarCollapsed));
+	}, [sidebarCollapsed]);
+
+	// Keyboard shortcut: Ctrl+B to toggle sidebar
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+				e.preventDefault();
+				setSidebarCollapsed((prev) => !prev);
+			}
+		};
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, []);
 
 	// File preview state
 	const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
@@ -394,28 +420,68 @@ export default function TemplatesPage() {
 	}
 
 	return (
-		<div className="p-6 h-full flex flex-col overflow-hidden">
+		<div className="p-3 sm:p-6 h-full flex flex-col overflow-hidden">
 			{/* Header */}
-			<div className="mb-6 flex items-center justify-between">
-				<div>
-					<h1 className="text-2xl font-bold">Code Templates</h1>
-					<p className="text-sm text-muted-foreground mt-1">
-						Generate boilerplate code from reusable templates
-					</p>
+			<div className="mb-4 sm:mb-6 flex items-center justify-between gap-2 sm:gap-4">
+				<div className="flex items-center gap-2 sm:gap-3 min-w-0">
+					{/* Mobile menu button */}
+					<Button
+						variant="outline"
+						size="sm"
+						className="lg:hidden shrink-0"
+						onClick={() => setMobileDrawerOpen(true)}
+					>
+						<Menu className="w-4 h-4" />
+					</Button>
+					<div className="min-w-0">
+						<h1 className="text-xl sm:text-2xl font-bold truncate">Templates</h1>
+						<p className="text-sm text-muted-foreground mt-1 hidden sm:block">
+							Generate boilerplate code from reusable templates
+						</p>
+					</div>
 				</div>
 				<Button
 					onClick={() => setShowCreateModal(true)}
-					className="bg-green-700 hover:bg-green-800 text-white"
+					className="bg-green-700 hover:bg-green-800 text-white shrink-0"
 				>
-					<Plus className="w-4 h-4 mr-2" />
-					New Template
+					<Plus className="w-4 h-4 sm:mr-2" />
+					<span className="hidden sm:inline">New Template</span>
 				</Button>
 			</div>
 
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0 overflow-hidden">
-				{/* Template List */}
-				<div className="lg:col-span-1 flex flex-col min-h-0 overflow-hidden">
+			<div className="flex gap-3 sm:gap-6 flex-1 min-h-0 overflow-hidden">
+				{/* Sidebar Toggle Button (when collapsed) */}
+				{sidebarCollapsed && (
+					<div className="shrink-0 hidden lg:block">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setSidebarCollapsed(false)}
+							title="Show sidebar"
+						>
+							<PanelLeft className="w-4 h-4" />
+						</Button>
+					</div>
+				)}
+
+				{/* Template List Sidebar */}
+				<div
+					className={`flex-col min-h-0 overflow-hidden transition-all duration-300 hidden lg:flex ${
+						sidebarCollapsed ? "w-0 opacity-0 pointer-events-none -ml-6" : "w-80 shrink-0"
+					}`}
+				>
 					<div className="bg-card rounded-lg border overflow-hidden flex flex-col flex-1 min-h-0">
+						<div className="p-3 border-b shrink-0 flex items-center justify-between">
+							<h2 className="font-semibold text-sm">Templates</h2>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => setSidebarCollapsed(true)}
+								title="Collapse sidebar"
+							>
+								<PanelLeftClose className="w-4 h-4" />
+							</Button>
+						</div>
 						<ScrollArea className="flex-1">
 							{(() => {
 								// Separate local and imported templates
@@ -518,7 +584,7 @@ export default function TemplatesPage() {
 				</div>
 
 				{/* Template Detail & Runner */}
-				<div className="lg:col-span-2 flex flex-col min-h-0 overflow-hidden">
+				<div className="flex-1 flex flex-col min-h-0 overflow-hidden">
 					{loadingDetail ? (
 						<div className="bg-card rounded-lg border p-12 text-center">
 							<div className="text-muted-foreground">Loading template...</div>
@@ -933,6 +999,95 @@ export default function TemplatesPage() {
 					)}
 				</div>
 			</div>
+
+			{/* Mobile Drawer */}
+			<Sheet open={mobileDrawerOpen} onOpenChange={setMobileDrawerOpen}>
+				<SheetContent side="left" className="w-[85vw] max-w-80 p-0">
+					<SheetHeader className="p-4 border-b">
+						<SheetTitle>Templates</SheetTitle>
+					</SheetHeader>
+					<ScrollArea className="h-[calc(100vh-80px)]">
+						{(() => {
+							const localTemplates = templates.filter((t) => !t.isImported);
+							const importedTemplates = templates.filter((t) => t.isImported);
+							const importedBySource = importedTemplates.reduce(
+								(acc, t) => {
+									const source = t.source || "unknown";
+									if (!acc[source]) acc[source] = [];
+									acc[source].push(t);
+									return acc;
+								},
+								{} as Record<string, typeof importedTemplates>,
+							);
+							const treeData: TreeDataItem[] = [];
+
+							if (localTemplates.length > 0) {
+								treeData.push({
+									id: "__local_mobile__",
+									name: `Local (${localTemplates.length})`,
+									icon: Folder,
+									openIcon: FolderOpen,
+									children: buildTemplateTreeData(localTemplates, (name) => {
+										handleSelectTemplate(name);
+										setMobileDrawerOpen(false);
+									}),
+								});
+							}
+
+							const importSources = Object.keys(importedBySource);
+							if (importSources.length > 0) {
+								const importChildren: TreeDataItem[] = importSources.map((source) => {
+									const originalNames = new Map<string, string>();
+									const templatesWithStrippedNames = importedBySource[source].map((t) => {
+										const strippedName = t.name.startsWith(`${source}/`)
+											? t.name.slice(source.length + 1)
+											: t.name;
+										originalNames.set(strippedName, t.name);
+										return { ...t, name: strippedName };
+									});
+									const selectWithOriginalName = (name: string) => {
+										const original = originalNames.get(name) || name;
+										handleSelectTemplate(original);
+										setMobileDrawerOpen(false);
+									};
+									return {
+										id: `__import_${source}_mobile__`,
+										name: `${source} (${importedBySource[source].length})`,
+										icon: Folder,
+										openIcon: FolderOpen,
+										children: buildTemplateTreeData(templatesWithStrippedNames, selectWithOriginalName),
+									};
+								});
+								treeData.push({
+									id: "__imports_mobile__",
+									name: `Imports (${importedTemplates.length})`,
+									icon: Folder,
+									openIcon: FolderOpen,
+									children: importChildren,
+								});
+							}
+
+							if (treeData.length === 0) {
+								return (
+									<div className="p-8 text-center">
+										<FileCode className="w-12 h-12 mx-auto text-muted-foreground" />
+										<p className="mt-2 font-medium">No templates yet</p>
+									</div>
+								);
+							}
+
+							return (
+								<TreeView
+									data={treeData}
+									defaultNodeIcon={Folder}
+									defaultLeafIcon={FileCode}
+									initialSelectedItemId={selectedName || undefined}
+								/>
+							);
+						})()}
+					</ScrollArea>
+				</SheetContent>
+			</Sheet>
 
 			{/* Create Template Modal */}
 			{showCreateModal && (

@@ -5,17 +5,34 @@ import {
   useMemo,
   useState,
   useEffect,
+  lazy,
+  Suspense,
   type ReactNode,
-  Children,
-  isValidElement,
   Component,
   type ErrorInfo,
 } from "react";
-import MDEditor from "@uiw/react-md-editor";
-import { ClipboardCheck, FileText, AlertTriangle, RefreshCw } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import hljs from "highlight.js";
+import { ClipboardCheck, FileText, AlertTriangle, RefreshCw, Check, Loader2 } from "lucide-react";
 import { useTheme } from "../../App";
 import { getTask, getDoc } from "../../api/client";
-import { MermaidBlock } from "./MermaidBlock";
+import { cn } from "../../lib/utils";
+
+// Lazy load MermaidBlock for better performance
+const MermaidBlock = lazy(() => import("./MermaidBlock"));
+
+// Loading fallback for Mermaid
+function MermaidLoading() {
+  return (
+    <div className="my-4 p-4 rounded-lg border bg-muted/30 animate-pulse">
+      <div className="h-32 flex items-center justify-center text-muted-foreground gap-2">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Loading diagram...
+      </div>
+    </div>
+  );
+}
 
 /**
  * Error boundary to catch render errors in markdown content
@@ -106,10 +123,44 @@ function normalizeDocPath(path: string): string {
 /**
  * Transform mention patterns into markdown links
  * These will then be styled via the custom link component
+ * IMPORTANT: Skip code blocks to avoid breaking mermaid/code syntax
  */
 function transformMentions(content: string): string {
+  // Split by fenced code blocks (```...```) and inline code (`...`)
+  // We only transform text outside of code blocks
+  const parts: string[] = [];
+  let lastIndex = 0;
+
+  // Match fenced code blocks (```...```) and inline code (`...`)
+  // Fenced blocks: ```language\n...\n```
+  // Inline code: `...`
+  const codeBlockRegex = /(```[\s\S]*?```|`[^`\n]+`)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    // Add text before this code block (transform it)
+    if (match.index > lastIndex) {
+      parts.push(transformMentionsInText(content.slice(lastIndex, match.index)));
+    }
+    // Add code block as-is (don't transform)
+    parts.push(match[0]);
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text after last code block
+  if (lastIndex < content.length) {
+    parts.push(transformMentionsInText(content.slice(lastIndex)));
+  }
+
+  return parts.join("");
+}
+
+/**
+ * Transform mentions in regular text (not code)
+ */
+function transformMentionsInText(text: string): string {
   // Transform @task-123 to [@@task-123](#/tasks/task-123)
-  let transformed = content.replace(TASK_MENTION_REGEX, "[@@$1](#/tasks/$1)");
+  let transformed = text.replace(TASK_MENTION_REGEX, "[@@$1](#/tasks/$1)");
 
   // Transform @doc/path or @docs/path to [@@doc/path.md](#/docs/path.md)
   transformed = transformed.replace(DOC_MENTION_REGEX, (_match, docPath) => {
@@ -328,25 +379,6 @@ function DocMentionBadge({
 }
 
 /**
- * Extract text content from React children recursively
- */
-function getTextContent(children: ReactNode): string {
-  if (typeof children === "string") return children;
-  if (typeof children === "number") return String(children);
-  if (!children) return "";
-
-  if (Array.isArray(children)) {
-    return children.map(getTextContent).join("");
-  }
-
-  if (isValidElement(children) && children.props?.children) {
-    return getTextContent(children.props.children);
-  }
-
-  return "";
-}
-
-/**
  * Read-only markdown renderer with mention badge support
  */
 const MDRender = forwardRef<MDRenderRef, MDRenderProps>(
@@ -364,96 +396,290 @@ const MDRender = forwardRef<MDRenderRef, MDRenderProps>(
       getElement: () => containerRef.current,
     }));
 
-    // Custom link component that renders mention badges
-    const CustomLink = useMemo(() => {
-      return function CustomLinkComponent({
-        href,
-        children,
-      }: {
-        href?: string;
-        children?: ReactNode;
-      }) {
-        const text = String(children);
+    // Custom components for react-markdown
+    const components = useMemo(
+      () => ({
+        // Custom link component that renders mention badges
+        a: ({ href, children }: { href?: string; children?: ReactNode }) => {
+          const text = String(children);
 
-        // Check if this is a task mention (starts with @@task-)
-        if (text.startsWith("@@task-")) {
-          const taskId = text.slice(2); // Remove @@
-          return (
-            <TaskMentionBadge
-              taskId={taskId}
-              onTaskLinkClick={onTaskLinkClick}
-            />
-          );
-        }
-
-        // Check if this is a doc mention (starts with @@doc/)
-        if (text.startsWith("@@doc/")) {
-          const docPath = text.slice(6); // Remove @@doc/
-          return (
-            <DocMentionBadge
-              docPath={docPath}
-              onDocLinkClick={onDocLinkClick}
-            />
-          );
-        }
-
-        // Regular link
-        return <a href={href}>{children}</a>;
-      };
-    }, [onDocLinkClick, onTaskLinkClick]);
-
-    // Custom pre component that handles mermaid code blocks
-    const CustomPre = useMemo(() => {
-      return function CustomPreComponent({
-        children,
-        ...props
-      }: {
-        children?: ReactNode;
-      } & React.HTMLAttributes<HTMLPreElement>) {
-        // Check if this pre contains a code element with mermaid language
-        const codeChild = Children.toArray(children).find(
-          (child) => isValidElement(child) && child.type === "code"
-        );
-
-        if (isValidElement(codeChild)) {
-          const codeProps = codeChild.props as { className?: string; children?: ReactNode };
-          const className = codeProps.className || "";
-          const match = /language-(\w+)/.exec(className);
-          const language = match?.[1];
-
-          if (language === "mermaid") {
-            const code = getTextContent(codeProps.children);
-            if (code) {
-              return <MermaidBlock code={code} />;
-            }
+          // Check if this is a task mention (starts with @@task-)
+          if (text.startsWith("@@task-")) {
+            const taskId = text.slice(2); // Remove @@
+            return (
+              <TaskMentionBadge
+                taskId={taskId}
+                onTaskLinkClick={onTaskLinkClick}
+              />
+            );
           }
-        }
 
-        // Regular pre block
-        return <pre {...props}>{children}</pre>;
-      };
-    }, []);
+          // Check if this is a doc mention (starts with @@doc/)
+          if (text.startsWith("@@doc/")) {
+            const docPath = text.slice(6); // Remove @@doc/
+            return (
+              <DocMentionBadge
+                docPath={docPath}
+                onDocLinkClick={onDocLinkClick}
+              />
+            );
+          }
+
+          // Regular link
+          return (
+            <a href={href} className="text-primary hover:underline">
+              {children}
+            </a>
+          );
+        },
+
+        // Custom code component that handles mermaid blocks and syntax highlighting
+        code: ({
+          className: codeClassName,
+          children,
+          node,
+          ...props
+        }: {
+          className?: string;
+          children?: ReactNode;
+          node?: unknown;
+        }) => {
+          const match = /language-(\w+)/.exec(codeClassName || "");
+          const language = match?.[1];
+          const codeContent = String(children).replace(/\n$/, "");
+
+          // Check if this is inline code (no language and single line without newlines)
+          const isInline = !language && !String(children).includes("\n");
+
+          // Inline code
+          if (isInline) {
+            return (
+              <code
+                className="px-1.5 py-0.5 rounded bg-muted text-sm font-mono"
+                {...props}
+              >
+                {children}
+              </code>
+            );
+          }
+
+          // Handle mermaid code blocks (lazy loaded)
+          if (language === "mermaid") {
+            // Use code hash as key to ensure stable identity
+            const key = `mermaid-${codeContent.length}-${codeContent.slice(0, 50).replace(/\s/g, '')}`;
+            return (
+              <Suspense key={key} fallback={<MermaidLoading />}>
+                <MermaidBlock code={codeContent} />
+              </Suspense>
+            );
+          }
+
+          // Block code with syntax highlighting using highlight.js
+          let highlightedCode: string;
+          try {
+            if (language && hljs.getLanguage(language)) {
+              highlightedCode = hljs.highlight(codeContent, { language }).value;
+            } else {
+              highlightedCode = hljs.highlightAuto(codeContent).value;
+            }
+          } catch {
+            highlightedCode = codeContent;
+          }
+
+          return (
+            <code
+              className={`hljs ${language ? `language-${language}` : ""}`}
+              dangerouslySetInnerHTML={{ __html: highlightedCode }}
+            />
+          );
+        },
+
+        // Custom pre to wrap code blocks
+        pre: ({ children, ...props }: { children?: ReactNode }) => {
+          return (
+            <pre
+              className="p-4 rounded-lg overflow-x-auto text-sm hljs-pre"
+              {...props}
+            >
+              {children}
+            </pre>
+          );
+        },
+
+        // Custom input for checkboxes (task lists)
+        input: ({
+          type,
+          checked,
+          disabled,
+          ...props
+        }: {
+          type?: string;
+          checked?: boolean;
+          disabled?: boolean;
+        }) => {
+          if (type === "checkbox") {
+            return (
+              <span
+                className={cn(
+                  "inline-flex items-center justify-center h-4 w-4 shrink-0 rounded-sm border mr-2 align-text-bottom",
+                  checked
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : "border-muted-foreground/50"
+                )}
+                aria-checked={checked}
+                role="checkbox"
+              >
+                {checked && <Check className="h-3 w-3" />}
+              </span>
+            );
+          }
+          return <input type={type} checked={checked} disabled={disabled} {...props} />;
+        },
+
+        // Custom li for task list items (remove bullet)
+        li: ({
+          children,
+          className,
+          ...props
+        }: {
+          children?: ReactNode;
+          className?: string;
+        }) => {
+          const isTaskListItem = className?.includes("task-list-item");
+          return (
+            <li
+              className={cn(
+                className,
+                isTaskListItem && "list-none ml-0 flex items-start gap-0"
+              )}
+              {...props}
+            >
+              {children}
+            </li>
+          );
+        },
+
+        // Custom ul for task lists (remove padding for task lists)
+        ul: ({
+          children,
+          className,
+          ...props
+        }: {
+          children?: ReactNode;
+          className?: string;
+        }) => {
+          const isTaskList = className?.includes("contains-task-list");
+          return (
+            <ul
+              className={cn(
+                className,
+                isTaskList && "list-none pl-0"
+              )}
+              {...props}
+            >
+              {children}
+            </ul>
+          );
+        },
+
+        // Custom table components for better styling with copy button
+        table: ({ children, ...props }: { children?: ReactNode }) => {
+          const [copied, setCopied] = useState(false);
+          const tableRef = useRef<HTMLTableElement>(null);
+
+          const handleCopyTable = () => {
+            if (!tableRef.current) return;
+
+            // Convert table to markdown
+            const rows = tableRef.current.querySelectorAll("tr");
+            const markdownRows: string[] = [];
+
+            rows.forEach((row, rowIndex) => {
+              const cells = row.querySelectorAll("th, td");
+              const cellTexts = Array.from(cells).map((cell) => cell.textContent?.trim() || "");
+              markdownRows.push(`| ${cellTexts.join(" | ")} |`);
+
+              // Add separator after header row
+              if (rowIndex === 0) {
+                markdownRows.push(`| ${cellTexts.map(() => "---").join(" | ")} |`);
+              }
+            });
+
+            const markdown = markdownRows.join("\n");
+            navigator.clipboard.writeText(markdown).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            });
+          };
+
+          return (
+            <div className="table-wrapper group relative my-4 overflow-x-auto rounded-lg border border-border">
+              <button
+                type="button"
+                onClick={handleCopyTable}
+                className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md bg-muted hover:bg-muted/80 border border-border text-muted-foreground hover:text-foreground"
+                title="Copy as Markdown"
+              >
+                {copied ? <Check className="w-4 h-4 text-green-500" /> : <ClipboardCheck className="w-4 h-4" />}
+              </button>
+              <table ref={tableRef} className="w-full border-collapse text-sm" {...props}>
+                {children}
+              </table>
+            </div>
+          );
+        },
+
+        thead: ({ children, ...props }: { children?: ReactNode }) => (
+          <thead className="bg-muted" {...props}>
+            {children}
+          </thead>
+        ),
+
+        tbody: ({ children, ...props }: { children?: ReactNode }) => (
+          <tbody className="divide-y divide-border/50" {...props}>
+            {children}
+          </tbody>
+        ),
+
+        tr: ({ children, ...props }: { children?: ReactNode }) => (
+          <tr className="hover:bg-muted/50 transition-colors" {...props}>
+            {children}
+          </tr>
+        ),
+
+        th: ({ children, ...props }: { children?: ReactNode }) => (
+          <th
+            className="px-4 py-3 text-left font-semibold border-b-2 border-border"
+            {...props}
+          >
+            {children}
+          </th>
+        ),
+
+        td: ({ children, ...props }: { children?: ReactNode }) => (
+          <td
+            className="px-4 py-3 border-b border-border/30"
+            {...props}
+          >
+            {children}
+          </td>
+        ),
+      }),
+      [onDocLinkClick, onTaskLinkClick, isDark]
+    );
 
     if (!markdown) return null;
 
     return (
       <div
         ref={containerRef}
-        className={`md-render-wrapper ${className}`}
+        className={`md-render-wrapper prose prose-sm dark:prose-invert max-w-none ${className}`}
         data-color-mode={isDark ? "dark" : "light"}
       >
         <MarkdownErrorBoundary>
-          <MDEditor.Markdown
-            source={transformedMarkdown}
-            style={{
-              backgroundColor: "transparent",
-              padding: 0,
-            }}
-            components={{
-              a: CustomLink,
-              pre: CustomPre,
-            }}
-          />
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+            {transformedMarkdown}
+          </ReactMarkdown>
         </MarkdownErrorBoundary>
       </div>
     );

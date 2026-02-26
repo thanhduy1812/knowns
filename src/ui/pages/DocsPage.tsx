@@ -16,6 +16,11 @@ import {
 	ChevronDown,
 	ChevronUp,
 	ExternalLink,
+	PanelLeftClose,
+	PanelLeft,
+	Menu,
+	ChevronRight,
+	Home,
 } from "lucide-react";
 import type { Task } from "../../models/task";
 import { MDEditor, MDRender } from "../components/editor";
@@ -25,6 +30,7 @@ import { Input } from "../components/ui/input";
 import { TreeView, type TreeDataItem } from "../components/ui/tree-view";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
 import { getDocs, createDoc, updateDoc, getTasksBySpec } from "../api/client";
 import { useSSEEvent } from "../contexts/SSEContext";
 import { useGlobalTask } from "../contexts/GlobalTaskContext";
@@ -49,8 +55,63 @@ export default function DocsPage() {
 	const [pathCopied, setPathCopied] = useState(false);
 	const [linkedTasks, setLinkedTasks] = useState<Task[]>([]);
 	const [linkedTasksExpanded, setLinkedTasksExpanded] = useState(false);
-	const [showSpecsOnly, setShowSpecsOnly] = useState(false);
+	const [showSpecsOnly, setShowSpecsOnly] = useState(() => {
+		const saved = localStorage.getItem("docs-specs-only");
+		return saved === "true";
+	});
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+		const saved = localStorage.getItem("docs-sidebar-collapsed");
+		return saved === "true";
+	});
+	const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 	const markdownPreviewRef = useRef<HTMLDivElement>(null);
+	const scrollAreaRef = useRef<HTMLDivElement>(null);
+	const scrollPositions = useRef<Map<string, number>>(new Map());
+
+	// Save scroll position before changing doc
+	const saveScrollPosition = useCallback(() => {
+		if (selectedDoc && scrollAreaRef.current) {
+			const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+			if (viewport) {
+				scrollPositions.current.set(selectedDoc.path, viewport.scrollTop);
+			}
+		}
+	}, [selectedDoc]);
+
+	// Restore scroll position when doc changes
+	useEffect(() => {
+		if (selectedDoc && scrollAreaRef.current) {
+			const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+			if (viewport) {
+				const savedPosition = scrollPositions.current.get(selectedDoc.path) || 0;
+				// Small delay to ensure content is rendered
+				requestAnimationFrame(() => {
+					viewport.scrollTop = savedPosition;
+				});
+			}
+		}
+	}, [selectedDoc?.path]);
+
+	// Persist sidebar and filter state to localStorage
+	useEffect(() => {
+		localStorage.setItem("docs-sidebar-collapsed", String(sidebarCollapsed));
+	}, [sidebarCollapsed]);
+
+	useEffect(() => {
+		localStorage.setItem("docs-specs-only", String(showSpecsOnly));
+	}, [showSpecsOnly]);
+
+	// Keyboard shortcut: Ctrl+B to toggle sidebar
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+				e.preventDefault();
+				setSidebarCollapsed((prev) => !prev);
+			}
+		};
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, []);
 
 	// Initial docs load
 	useEffect(() => {
@@ -110,11 +171,12 @@ export default function DocsPage() {
 			});
 
 			if (targetDoc && targetDoc !== selectedDoc) {
+				saveScrollPosition();
 				setSelectedDoc(targetDoc);
 				setIsEditing(false);
 			}
 		}
-	}, [docs, selectedDoc]);
+	}, [docs, selectedDoc, saveScrollPosition]);
 
 	// Handle initial load and docs change
 	useEffect(() => {
@@ -181,7 +243,7 @@ export default function DocsPage() {
 			previewEl.addEventListener("click", handleLinkClick);
 			return () => previewEl.removeEventListener("click", handleLinkClick);
 		}
-	}, [docs, selectedDoc]);
+	}, [docs, selectedDoc, openTask]);
 
 	const loadDocs = () => {
 		getDocs()
@@ -458,35 +520,72 @@ export default function DocsPage() {
 	}
 
 	return (
-		<div className="p-6 h-full flex flex-col overflow-hidden">
+		<div className="p-3 sm:p-6 h-full flex flex-col overflow-hidden">
 			{/* Header */}
-			<div className="mb-6 flex items-center justify-between">
-				<h1 className="text-2xl font-bold">Documentation</h1>
+			<div className="mb-4 sm:mb-6 flex items-center justify-between gap-2 sm:gap-4">
+				<div className="flex items-center gap-2">
+					{/* Mobile menu button */}
+					<Button
+						variant="outline"
+						size="sm"
+						className="lg:hidden shrink-0"
+						onClick={() => setMobileDrawerOpen(true)}
+					>
+						<Menu className="w-4 h-4" />
+					</Button>
+					<h1 className="text-xl sm:text-2xl font-bold truncate">Documentation</h1>
+				</div>
 				<Button
 					onClick={() => setShowCreateModal(true)}
 					className="bg-green-700 hover:bg-green-800 text-white"
 				>
 					<Plus className="w-4 h-4 mr-2" />
-					New Document
+					<span className="hidden sm:inline">New Document</span>
+					<span className="sm:hidden">New</span>
 				</Button>
 			</div>
 
-			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0 overflow-hidden">
-				{/* Doc List */}
-				<div className="lg:col-span-1 flex flex-col min-h-0 overflow-hidden">
+			<div className="flex gap-3 sm:gap-6 flex-1 min-h-0 overflow-hidden">
+				{/* Sidebar Toggle Button (when collapsed) */}
+				{sidebarCollapsed && (
+					<div className="shrink-0 hidden lg:block">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setSidebarCollapsed(false)}
+							title="Show sidebar"
+						>
+							<PanelLeft className="w-4 h-4" />
+						</Button>
+					</div>
+				)}
+
+				{/* Doc List Sidebar */}
+				<div
+					className={`flex-col min-h-0 overflow-hidden transition-all duration-300 hidden lg:flex ${
+						sidebarCollapsed ? "w-0 opacity-0 pointer-events-none -ml-6" : "w-80 shrink-0"
+					}`}
+				>
 					<div className="bg-card rounded-lg border overflow-hidden flex flex-col flex-1 min-h-0">
-						<div className="p-4 border-b shrink-0 flex items-center justify-between">
-							<h2 className="font-semibold">
-								{showSpecsOnly ? "Specs Only" : "All Documents"} ({showSpecsOnly ? localDocs.length + importedDocs.length : docs.length})
-							</h2>
+						<div className="p-3 border-b shrink-0 flex items-center justify-between gap-2">
+							<div className="flex items-center gap-1 shrink-0">
+								<Button
+									variant={showSpecsOnly ? "default" : "outline"}
+									size="sm"
+									onClick={() => setShowSpecsOnly(!showSpecsOnly)}
+									title={showSpecsOnly ? "Show all documents" : "Show specs only"}
+								>
+									<Filter className="w-4 h-4 mr-1" />
+									Specs
+								</Button>
+							</div>
 							<Button
-								variant={showSpecsOnly ? "default" : "outline"}
+								variant="ghost"
 								size="sm"
-								onClick={() => setShowSpecsOnly(!showSpecsOnly)}
-								title={showSpecsOnly ? "Show all documents" : "Show specs only"}
+								onClick={() => setSidebarCollapsed(true)}
+								title="Collapse sidebar"
 							>
-								<Filter className="w-4 h-4 mr-1" />
-								Specs
+								<PanelLeftClose className="w-4 h-4" />
 							</Button>
 						</div>
 						<ScrollArea className="flex-1">
@@ -536,174 +635,179 @@ export default function DocsPage() {
 				</div>
 
 				{/* Doc Content */}
-				<div className="lg:col-span-2 flex flex-col min-h-0 overflow-hidden">
+				<div className="flex-1 flex flex-col min-h-0 overflow-hidden">
 					{selectedDoc ? (
 						<div className="bg-card rounded-lg border overflow-hidden flex flex-col flex-1 min-h-0">
-							{/* Header */}
-							<div className="p-6 border-b flex items-start justify-between shrink-0">
-								<div className="flex-1">
-									<div className="flex items-center gap-2 mb-2">
-										<h2 className="text-2xl font-bold">
-											{selectedDoc.metadata.title}
-										</h2>
-										{/* Spec badges */}
-										{isSpec(selectedDoc) && (
-											<Badge className="bg-purple-600 hover:bg-purple-700 text-white">
-												SPEC
-											</Badge>
-										)}
-										{isSpec(selectedDoc) && getSpecStatus(selectedDoc) && (
-											<Badge
-												className={
-													getSpecStatus(selectedDoc) === "approved"
-														? "bg-green-600 hover:bg-green-700 text-white"
-														: getSpecStatus(selectedDoc) === "implemented"
-															? "bg-blue-600 hover:bg-blue-700 text-white"
-															: "bg-yellow-600 hover:bg-yellow-700 text-white"
-												}
-											>
-												{getSpecStatus(selectedDoc)?.charAt(0).toUpperCase() + getSpecStatus(selectedDoc)?.slice(1)}
-											</Badge>
-										)}
-										{selectedDoc.isImported && (
-											<span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded">
-												Imported
-											</span>
-										)}
-									</div>
-									{/* Spec AC Progress & Linked Tasks */}
-									{isSpec(selectedDoc) && (() => {
-										const acProgress = parseACProgress(selectedDoc.content);
-										return (
+							{/* Header - Compact on mobile */}
+							<div className="p-3 sm:p-4 border-b shrink-0">
+								{/* Top row: Breadcrumb + Edit Button */}
+								<div className="flex items-center justify-between gap-2 mb-2">
+									{/* Breadcrumb - simplified on mobile */}
+									<nav className="flex items-center gap-1 text-xs sm:text-sm text-muted-foreground min-w-0 flex-1">
+										<button
+											type="button"
+											onClick={() => {
+												saveScrollPosition();
+												setSelectedDoc(null);
+											}}
+											className="hover:text-foreground transition-colors flex items-center gap-1 shrink-0"
+										>
+											<Home className="w-3.5 h-3.5" />
+											<span className="hidden sm:inline">Docs</span>
+										</button>
+										{selectedDoc.folder && (
 											<>
-												<div className="flex items-center gap-6 mb-3">
-													{acProgress.total > 0 && (
-														<div className="flex items-center gap-2">
-															<ListChecks className="w-4 h-4 text-muted-foreground" />
-															<Progress value={Math.round((acProgress.completed / acProgress.total) * 100)} className="w-32 h-2" />
-															<span className="text-sm text-muted-foreground">
-																{acProgress.completed}/{acProgress.total} ACs
-															</span>
-														</div>
-													)}
-													{/* Linked tasks */}
-													<button
-														type="button"
-														onClick={() => setLinkedTasksExpanded(!linkedTasksExpanded)}
-														className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-													>
-														<FileText className="w-4 h-4" />
-														<span>{linkedTasks.length} tasks linked</span>
-														{linkedTasks.length > 0 && (
-															linkedTasksExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-														)}
-													</button>
-												</div>
-												{/* Expanded linked tasks list */}
-												{linkedTasksExpanded && linkedTasks.length > 0 && (
-													<div className="mb-3 p-3 rounded-lg bg-muted/50 border">
-														<div className="space-y-2">
-															{linkedTasks.map((task) => (
-																<button
-																	type="button"
-																	key={task.id}
-																	onClick={() => openTask(task.id)}
-																	className="flex items-center justify-between p-2 rounded hover:bg-background transition-colors group w-full text-left"
-																>
-																	<div className="flex items-center gap-2 min-w-0">
-																		<span className={`w-2 h-2 rounded-full shrink-0 ${
-																			task.status === "done" ? "bg-green-500" :
-																			task.status === "in-progress" ? "bg-yellow-500" :
-																			task.status === "blocked" ? "bg-red-500" : "bg-gray-400"
-																		}`} />
-																		<span className="text-xs font-mono text-muted-foreground">#{task.id}</span>
-																		<span className="text-sm truncate">{task.title}</span>
-																		{/* Show fulfills badges */}
-																		{task.fulfills && task.fulfills.length > 0 && (
-																			<span className="flex gap-1 ml-1">
-																				{task.fulfills.map((ac) => (
-																					<Badge key={ac} variant="outline" className="text-[10px] px-1 py-0 h-4">
-																						{ac}
-																					</Badge>
-																				))}
-																			</span>
-																		)}
-																	</div>
-																	<div className="flex items-center gap-2 shrink-0">
-																		<span className={`text-xs px-1.5 py-0.5 rounded ${
-																			task.status === "done" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-																			task.status === "in-progress" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" :
-																			"bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
-																		}`}>
-																			{task.status}
-																		</span>
-																		<ExternalLink className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-																	</div>
-																</button>
-															))}
-														</div>
-													</div>
-												)}
+												<ChevronRight className="w-3 h-3 shrink-0" />
+												<span className="truncate max-w-[80px] sm:max-w-none">{selectedDoc.folder}</span>
 											</>
-										);
-									})()}
-									{selectedDoc.isImported && selectedDoc.source && (
-										<p className="text-sm text-blue-600 dark:text-blue-400 mb-2">
-											From: {selectedDoc.source}
-										</p>
-									)}
-									{selectedDoc.metadata.description && (
-										<p className="text-muted-foreground mb-2">{selectedDoc.metadata.description}</p>
-									)}
-									{/* Path display */}
-									<button
-										type="button"
-										onClick={handleCopyPath}
-										className="flex items-center gap-2 px-2 py-1 rounded text-xs text-blue-600 dark:text-blue-400 hover:bg-accent transition-colors group"
-										title="Click to copy reference"
-									>
-										<Folder className="w-4 h-4" />
-										<span className="font-mono">@doc/{toDisplayPath(selectedDoc.path).replace(/\.md$/, "")}</span>
-										<span className="opacity-0 group-hover:opacity-100 transition-opacity">
-											{pathCopied ? "✓ Copied!" : <Copy className="w-4 h-4" />}
+										)}
+										<ChevronRight className="w-3 h-3 shrink-0" />
+										<span className="text-foreground font-medium truncate">
+											{selectedDoc.metadata.title}
 										</span>
-									</button>
-									<div className="text-sm text-muted-foreground mt-2">
-										Last updated: {new Date(selectedDoc.metadata.updatedAt).toLocaleString()}
+									</nav>
+
+									{/* Edit/Save/Cancel Buttons */}
+									<div className="flex gap-1.5 sm:gap-2 shrink-0">
+										{!isEditing ? (
+											<Button
+												size="sm"
+												onClick={handleEdit}
+												disabled={selectedDoc.isImported}
+												title={selectedDoc.isImported ? "Imported docs are read-only" : "Edit document"}
+											>
+												<Pencil className="w-4 h-4 sm:mr-2" />
+												<span className="hidden sm:inline">Edit</span>
+											</Button>
+										) : (
+											<>
+												<Button
+													size="sm"
+													onClick={handleSave}
+													disabled={saving}
+													className="bg-green-700 hover:bg-green-800 text-white"
+												>
+													<Check className="w-4 h-4 sm:mr-2" />
+													<span className="hidden sm:inline">{saving ? "Saving..." : "Save"}</span>
+												</Button>
+												<Button
+													size="sm"
+													variant="secondary"
+													onClick={handleCancel}
+													disabled={saving}
+												>
+													<X className="w-4 h-4 sm:mr-2" />
+													<span className="hidden sm:inline">Cancel</span>
+												</Button>
+											</>
+										)}
 									</div>
 								</div>
 
-								{/* Edit/Save/Cancel Buttons */}
-								<div className="flex gap-2 ml-4">
-									{!isEditing ? (
-										<Button
-											onClick={handleEdit}
-											disabled={selectedDoc.isImported}
-											title={selectedDoc.isImported ? "Imported docs are read-only" : "Edit document"}
-										>
-											<Pencil className="w-4 h-4 mr-2" />
-											Edit
-										</Button>
-									) : (
-										<>
-											<Button
-												onClick={handleSave}
-												disabled={saving}
-												className="bg-green-700 hover:bg-green-800 text-white"
-											>
-												<Check className="w-4 h-4 mr-2" />
-												{saving ? "Saving..." : "Save"}
-											</Button>
-											<Button
-												variant="secondary"
-												onClick={handleCancel}
-												disabled={saving}
-											>
-												<X className="w-4 h-4 mr-2" />
-												Cancel
-											</Button>
-										</>
+								{/* Title + Badges */}
+								<div className="flex items-center gap-2 flex-wrap mb-2">
+									<h2 className="text-lg sm:text-xl font-bold">
+										{selectedDoc.metadata.title}
+									</h2>
+									{isSpec(selectedDoc) && (
+										<Badge className="bg-purple-600 hover:bg-purple-700 text-white text-xs">
+											SPEC
+										</Badge>
 									)}
+									{isSpec(selectedDoc) && getSpecStatus(selectedDoc) && (
+										<Badge
+											className={`text-xs ${
+												getSpecStatus(selectedDoc) === "approved"
+													? "bg-green-600 hover:bg-green-700 text-white"
+													: getSpecStatus(selectedDoc) === "implemented"
+														? "bg-blue-600 hover:bg-blue-700 text-white"
+														: "bg-yellow-600 hover:bg-yellow-700 text-white"
+											}`}
+										>
+											{getSpecStatus(selectedDoc)?.charAt(0).toUpperCase() + getSpecStatus(selectedDoc)?.slice(1)}
+										</Badge>
+									)}
+									{selectedDoc.isImported && (
+										<span className="px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded">
+											Imported
+										</span>
+									)}
+								</div>
+
+								{/* Spec AC Progress & Linked Tasks - Compact on mobile */}
+								{isSpec(selectedDoc) && (() => {
+									const acProgress = parseACProgress(selectedDoc.content);
+									return (
+										<>
+											<div className="flex items-center gap-3 sm:gap-6 mb-2 flex-wrap">
+												{acProgress.total > 0 && (
+													<div className="flex items-center gap-2">
+														<ListChecks className="w-4 h-4 text-muted-foreground" />
+														<Progress value={Math.round((acProgress.completed / acProgress.total) * 100)} className="w-20 sm:w-32 h-2" />
+														<span className="text-xs sm:text-sm text-muted-foreground">
+															{acProgress.completed}/{acProgress.total}
+														</span>
+													</div>
+												)}
+												<button
+													type="button"
+													onClick={() => setLinkedTasksExpanded(!linkedTasksExpanded)}
+													className="flex items-center gap-1.5 text-xs sm:text-sm text-muted-foreground hover:text-foreground transition-colors"
+												>
+													<FileText className="w-3.5 h-3.5" />
+													<span>{linkedTasks.length} tasks</span>
+													{linkedTasks.length > 0 && (
+														linkedTasksExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+													)}
+												</button>
+											</div>
+											{linkedTasksExpanded && linkedTasks.length > 0 && (
+												<div className="mb-2 p-2 sm:p-3 rounded-lg bg-muted/50 border text-sm">
+													<div className="space-y-1.5">
+														{linkedTasks.map((task) => (
+															<button
+																type="button"
+																key={task.id}
+																onClick={() => openTask(task.id)}
+																className="flex items-center justify-between p-1.5 rounded hover:bg-background transition-colors group w-full text-left"
+															>
+																<div className="flex items-center gap-2 min-w-0">
+																	<span className={`w-2 h-2 rounded-full shrink-0 ${
+																		task.status === "done" ? "bg-green-500" :
+																		task.status === "in-progress" ? "bg-yellow-500" :
+																		task.status === "blocked" ? "bg-red-500" : "bg-gray-400"
+																	}`} />
+																	<span className="text-xs font-mono text-muted-foreground">#{task.id}</span>
+																	<span className="text-xs sm:text-sm truncate">{task.title}</span>
+																</div>
+																<ExternalLink className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+															</button>
+														))}
+													</div>
+												</div>
+											)}
+										</>
+									);
+								})()}
+
+								{/* Description - hidden on mobile if no description */}
+								{selectedDoc.metadata.description && (
+									<p className="text-xs sm:text-sm text-muted-foreground mb-2 line-clamp-2">{selectedDoc.metadata.description}</p>
+								)}
+
+								{/* Path + Updated - Single line on mobile */}
+								<div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+									<button
+										type="button"
+										onClick={handleCopyPath}
+										className="flex items-center gap-1 hover:text-foreground transition-colors"
+										title="Click to copy reference"
+									>
+										<Copy className="w-3 h-3" />
+										<span className="font-mono truncate max-w-[150px] sm:max-w-none">@doc/{toDisplayPath(selectedDoc.path).replace(/\.md$/, "")}</span>
+									</button>
+									<span className="hidden sm:inline">•</span>
+									<span className="hidden sm:inline">Updated: {new Date(selectedDoc.metadata.updatedAt).toLocaleString()}</span>
 								</div>
 							</div>
 
@@ -719,10 +823,11 @@ export default function DocsPage() {
 									/>
 								</div>
 							) : (
-								<ScrollArea className="flex-1">
+								<ScrollArea className="flex-1" ref={scrollAreaRef}>
 									<div className="p-6 prose prose-sm dark:prose-invert max-w-none" ref={markdownPreviewRef}>
 										<MDRender
 											markdown={selectedDoc.content || ""}
+											onTaskLinkClick={openTask}
 										/>
 									</div>
 								</ScrollArea>
@@ -737,15 +842,68 @@ export default function DocsPage() {
 				</div>
 			</div>
 
+			{/* Mobile Drawer */}
+			<Sheet open={mobileDrawerOpen} onOpenChange={setMobileDrawerOpen}>
+				<SheetContent side="left" className="w-[85vw] max-w-80 p-0">
+					<SheetHeader className="p-4 border-b">
+						<SheetTitle>Documents</SheetTitle>
+					</SheetHeader>
+					<div className="p-3 border-b flex items-center gap-2">
+						<Button
+							variant={showSpecsOnly ? "default" : "outline"}
+							size="sm"
+							onClick={() => setShowSpecsOnly(!showSpecsOnly)}
+							className="flex-1"
+						>
+							<Filter className="w-4 h-4 mr-1" />
+							Specs Only
+						</Button>
+					</div>
+					<ScrollArea className="flex-1 h-[calc(100vh-130px)]">
+						{/* Local Docs Section */}
+						{localDocs.length > 0 && (
+							<TreeView
+								data={{
+									id: "__local_mobile__",
+									name: `Local (${localDocs.length})`,
+									icon: Folder,
+									openIcon: FolderOpen,
+									children: localTreeData,
+								}}
+								defaultNodeIcon={Folder}
+								defaultLeafIcon={FileText}
+								initialSelectedItemId={selectedDoc?.path}
+							/>
+						)}
+
+						{/* Imported Docs Section */}
+						{importsTreeData.length > 0 && (
+							<TreeView
+								data={{
+									id: "__imports_mobile__",
+									name: `Imports (${importedDocs.length})`,
+									icon: Download,
+									openIcon: Download,
+									children: importsTreeData,
+								}}
+								defaultNodeIcon={Folder}
+								defaultLeafIcon={FileText}
+								initialSelectedItemId={selectedDoc?.path}
+							/>
+						)}
+					</ScrollArea>
+				</SheetContent>
+			</Sheet>
+
 			{/* Create Document Modal */}
 			{showCreateModal && (
-				<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-					<div className="bg-card rounded-lg shadow-xl max-w-4xl w-full h-[90vh] flex flex-col">
-						<div className="p-6 border-b shrink-0">
-							<h2 className="text-xl font-bold">Create New Document</h2>
+				<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
+					<div className="bg-card rounded-lg shadow-xl max-w-4xl w-full h-[95vh] sm:h-[90vh] flex flex-col">
+						<div className="p-3 sm:p-6 border-b shrink-0">
+							<h2 className="text-lg sm:text-xl font-bold">Create New Document</h2>
 						</div>
 
-						<div className="p-6 space-y-4 flex-1 flex flex-col overflow-hidden">
+						<div className="p-3 sm:p-6 space-y-3 sm:space-y-4 flex-1 flex flex-col overflow-hidden">
 							{/* Title */}
 							<div className="shrink-0">
 								<label className="block text-sm font-medium mb-2">Title *</label>
@@ -809,7 +967,7 @@ export default function DocsPage() {
 							</div>
 						</div>
 
-						<div className="p-6 border-t flex justify-end gap-3 shrink-0">
+						<div className="p-3 sm:p-6 border-t flex justify-end gap-2 sm:gap-3 shrink-0">
 							<Button
 								variant="secondary"
 								onClick={() => {
