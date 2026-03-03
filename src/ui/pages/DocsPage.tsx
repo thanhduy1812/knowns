@@ -41,6 +41,7 @@ export default function DocsPage() {
 	const { openTask } = useGlobalTask();
 	const [docs, setDocs] = useState<Doc[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
 	const [selectedDoc, setSelectedDoc] = useState<Doc | null>(null);
 	const [isEditing, setIsEditing] = useState(false);
 	const [editedContent, setEditedContent] = useState("");
@@ -246,6 +247,7 @@ export default function DocsPage() {
 	}, [docs, selectedDoc, openTask]);
 
 	const loadDocs = () => {
+		setError(null);
 		getDocs()
 			.then((docs) => {
 				setDocs(docs as Doc[]);
@@ -253,6 +255,7 @@ export default function DocsPage() {
 			})
 			.catch((err) => {
 				console.error("Failed to load docs:", err);
+				setError(err instanceof Error ? err.message : "Failed to load documentation");
 				setLoading(false);
 			});
 	};
@@ -519,6 +522,20 @@ export default function DocsPage() {
 		);
 	}
 
+	if (error) {
+		return (
+			<div className="p-6 flex items-center justify-center h-64">
+				<div className="text-center">
+					<p className="text-lg text-destructive mb-2">Failed to load documentation</p>
+					<p className="text-sm text-muted-foreground mb-4">{error}</p>
+					<Button onClick={() => { setLoading(true); loadDocs(); }} variant="outline">
+						Retry
+					</Button>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="p-3 sm:p-6 h-full flex flex-col overflow-hidden">
 			{/* Header */}
@@ -562,9 +579,8 @@ export default function DocsPage() {
 
 				{/* Doc List Sidebar */}
 				<div
-					className={`flex-col min-h-0 overflow-hidden transition-all duration-300 hidden lg:flex ${
-						sidebarCollapsed ? "w-0 opacity-0 pointer-events-none -ml-6" : "w-80 shrink-0"
-					}`}
+					className={`flex-col min-h-0 overflow-hidden transition-all duration-300 hidden lg:flex ${sidebarCollapsed ? "w-0 opacity-0 pointer-events-none -ml-6" : "w-80 shrink-0"
+						}`}
 				>
 					<div className="bg-card rounded-lg border overflow-hidden flex flex-col flex-1 min-h-0">
 						<div className="p-3 border-b shrink-0 flex items-center justify-between gap-2">
@@ -716,13 +732,12 @@ export default function DocsPage() {
 									)}
 									{isSpec(selectedDoc) && getSpecStatus(selectedDoc) && (
 										<Badge
-											className={`text-xs ${
-												getSpecStatus(selectedDoc) === "approved"
+											className={`text-xs ${getSpecStatus(selectedDoc) === "approved"
 													? "bg-green-600 hover:bg-green-700 text-white"
 													: getSpecStatus(selectedDoc) === "implemented"
 														? "bg-blue-600 hover:bg-blue-700 text-white"
 														: "bg-yellow-600 hover:bg-yellow-700 text-white"
-											}`}
+												}`}
 										>
 											{getSpecStatus(selectedDoc)?.charAt(0).toUpperCase() + getSpecStatus(selectedDoc)?.slice(1)}
 										</Badge>
@@ -772,11 +787,10 @@ export default function DocsPage() {
 																className="flex items-center justify-between p-1.5 rounded hover:bg-background transition-colors group w-full text-left"
 															>
 																<div className="flex items-center gap-2 min-w-0">
-																	<span className={`w-2 h-2 rounded-full shrink-0 ${
-																		task.status === "done" ? "bg-green-500" :
-																		task.status === "in-progress" ? "bg-yellow-500" :
-																		task.status === "blocked" ? "bg-red-500" : "bg-gray-400"
-																	}`} />
+																	<span className={`w-2 h-2 rounded-full shrink-0 ${task.status === "done" ? "bg-green-500" :
+																			task.status === "in-progress" ? "bg-yellow-500" :
+																				task.status === "blocked" ? "bg-red-500" : "bg-gray-400"
+																		}`} />
 																	<span className="text-xs font-mono text-muted-foreground">#{task.id}</span>
 																	<span className="text-xs sm:text-sm truncate">{task.title}</span>
 																</div>
