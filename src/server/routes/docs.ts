@@ -37,27 +37,44 @@ export function createDocRoutes(ctx: RouteContext): Router {
 			if (existsSync(docsDir)) {
 				const mdFiles = await findMarkdownFiles(docsDir, docsDir);
 
-				const localDocs = await Promise.all(
+				const localDocResults = await Promise.all(
 					mdFiles.map(async (relativePath) => {
-						const fullPath = join(docsDir, relativePath);
-						const content = await readFile(fullPath, "utf-8");
-						const { data, content: docContent } = matter(content);
+						try {
+							const fullPath = join(docsDir, relativePath);
+							const content = await readFile(fullPath, "utf-8");
+							const { data, content: docContent } = matter(content);
 
-						const pathParts = relativePath.split("/");
-						const filename = pathParts[pathParts.length - 1];
-						const folder = pathParts.length > 1 ? pathParts.slice(0, -1).join("/") : "";
+							const pathParts = relativePath.split("/");
+							const filename = pathParts[pathParts.length - 1];
+							const folder = pathParts.length > 1 ? pathParts.slice(0, -1).join("/") : "";
 
-						return {
-							filename,
-							path: relativePath,
-							folder,
-							metadata: data,
-							content: docContent,
-							isImported: false,
-							source: "local",
-						} as DocResult;
+							// Ensure metadata always has required defaults
+							const now = new Date().toISOString();
+							const metadata = {
+								title: data.title || filename.replace(/\.md$/, ""),
+								createdAt: data.createdAt || now,
+								updatedAt: data.updatedAt || now,
+								...data,
+								// Re-apply defaults in case data has undefined values
+								...(data.title ? {} : { title: filename.replace(/\.md$/, "") }),
+							};
+
+							return {
+								filename,
+								path: relativePath,
+								folder,
+								metadata,
+								content: docContent,
+								isImported: false,
+								source: "local",
+							} as DocResult;
+						} catch (err) {
+							console.warn(`Skipping doc ${relativePath}: ${err}`);
+							return null;
+						}
 					}),
 				);
+				const localDocs = localDocResults.filter((d): d is DocResult => d !== null);
 				docs.push(...localDocs);
 			}
 

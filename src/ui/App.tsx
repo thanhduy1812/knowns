@@ -3,7 +3,7 @@ import type { Task } from "../models/task";
 import { api } from "./api/client";
 import { SSEProvider, useSSEEvent } from "./contexts/SSEContext";
 import { AppSidebar, TaskCreateForm, SearchCommandDialog, NotificationBell, TaskDetailSheet } from "./components/organisms";
-import { ConnectionStatus, ThemeToggle } from "./components/atoms";
+import { ConnectionStatus, ThemeToggle, ErrorBoundary } from "./components/atoms";
 import { HeaderTimeTracker } from "./components/molecules";
 import { SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
 import { Separator } from "./components/ui/separator";
@@ -44,7 +44,7 @@ interface ThemeContextType {
 
 export const ThemeContext = createContext<ThemeContextType>({
 	isDark: false,
-	toggle: () => {},
+	toggle: () => { },
 });
 
 // Extend Document interface for View Transitions API
@@ -330,9 +330,11 @@ function AppContent() {
 
 					{/* Page Content */}
 					<div className="flex-1 w-full overflow-y-auto overflow-x-hidden">
-						<Suspense fallback={<PageLoading />}>
-							{renderPage()}
-						</Suspense>
+						<ErrorBoundary>
+							<Suspense fallback={<PageLoading />}>
+								{renderPage()}
+							</Suspense>
+						</ErrorBoundary>
 					</div>
 				</main>
 
@@ -344,32 +346,32 @@ function AppContent() {
 					onCreated={handleTaskCreated}
 				/>
 
-			{/* Command Dialog (⌘K Search) */}
-			<SearchCommandDialog
-				open={showCommandDialog}
-				onOpenChange={setShowCommandDialog}
-				onTaskSelect={handleSearchTaskSelect}
-				onDocSelect={handleSearchDocSelect}
-			/>
+				{/* Command Dialog (⌘K Search) */}
+				<SearchCommandDialog
+					open={showCommandDialog}
+					onOpenChange={setShowCommandDialog}
+					onTaskSelect={handleSearchTaskSelect}
+					onDocSelect={handleSearchDocSelect}
+				/>
 
-			{/* Global Task Detail Modal - opens from any page without navigation */}
-			<TaskDetailSheet
-				task={currentTaskId ? tasks.find((t) => t.id === currentTaskId) || null : null}
-				allTasks={tasks}
-				onClose={closeTask}
-				onUpdate={(updatedTask) => {
-					setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
-				}}
-				onArchive={async (taskId) => {
-					try {
-						await api.archiveTask(taskId);
-						setTasks((prev) => prev.filter((t) => t.id !== taskId));
-						closeTask();
-					} catch (error) {
-						console.error("Failed to archive task:", error);
-					}
-				}}
-			/>
+				{/* Global Task Detail Modal - opens from any page without navigation */}
+				<TaskDetailSheet
+					task={currentTaskId ? tasks.find((t) => t.id === currentTaskId) || null : null}
+					allTasks={tasks}
+					onClose={closeTask}
+					onUpdate={(updatedTask) => {
+						setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
+					}}
+					onArchive={async (taskId) => {
+						try {
+							await api.archiveTask(taskId);
+							setTasks((prev) => prev.filter((t) => t.id !== taskId));
+							closeTask();
+						} catch (error) {
+							console.error("Failed to archive task:", error);
+						}
+					}}
+				/>
 			</SidebarProvider>
 			<Toaster />
 		</ThemeContext.Provider>

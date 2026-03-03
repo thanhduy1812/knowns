@@ -17,3 +17,4 @@ export { ConnectionStatus } from "./ConnectionStatus";
 export { Spinner } from "./Spinner";
 export { Icon, type IconName } from "./Icon";
 export { ThemeToggle } from "./ThemeToggle";
+export { ErrorBoundary } from "./ErrorBoundary";
